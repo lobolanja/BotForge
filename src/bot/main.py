@@ -1,5 +1,5 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from . import preguntar_ia, greet, ping, help_command, unknown_command, translate,time
+from . import ask_ia, greet, ping, help_command, unknown_command, translate,time
 import os
 from dotenv import load_dotenv
 
@@ -39,7 +39,7 @@ def main():
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     
     # call to the ia
-    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, preguntar_ia))
+    bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
 
     # to make sure it is running
     print("Bot in execution...")

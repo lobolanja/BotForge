@@ -3,7 +3,7 @@ from .handlers import greet, ping, help_command, unknown_command, translate,time
 from .engine import answer
 
 __all__ = [
-    "preguntar_ia",
+    "ask_ia",
     "greet",
     "help_command",
     "unknown_command",

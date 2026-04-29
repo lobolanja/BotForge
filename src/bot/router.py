@@ -5,7 +5,7 @@ from . import engine
 # This file manages the conversation logic: 
 # It receives the message, triggers the "typing" status, and calls the AI.
 
-async def preguntar_ia(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Variables containing the user's message and first name
     message = update.message.text
     user = update.effective_user.first_name
@@ -16,8 +16,8 @@ async def preguntar_ia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         action="typing"
     )
     
-    # Call the 'respuesta' function from your ia.py file and wait for the result
-    answer = await engine.respuesta(user, message)
+    # Call the 'answer' function from your engine.py file and wait for the result
+    answer = await engine.answer(user, message)
     
     # Send the AI's response back to the user in Telegram
     await update.message.reply_text(answer)
