@@ -1,5 +1,5 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from . import preguntar_ia, saludar
+from . import preguntar_ia, greet, ping, help_command, unknown_command, translate,time
 import os
 from dotenv import load_dotenv
 
@@ -18,7 +18,25 @@ def main():
     bot = Application.builder().token(token).build()
     
     # call to the 'saludar' command
-    bot.add_handler(CommandHandler("saludar", saludar))
+    bot.add_handler(CommandHandler("greet", greet))
+    
+    # call to the 'ping' command
+    bot.add_handler(CommandHandler("ping", ping))
+    
+    # call to the 'help' command
+    bot.add_handler(CommandHandler("help", help_command))
+    
+    # call to the 'unknown' command
+    bot.add_handler(CommandHandler("unknown", unknown_command))
+    
+    # call to the 'translate' command
+    bot.add_handler(CommandHandler("translate", translate))
+    
+    # call to the 'time' command
+    bot.add_handler(CommandHandler("time", time))
+    
+    # call to the 'unknown' command
+    bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
     
     # call to the ia
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, preguntar_ia))
