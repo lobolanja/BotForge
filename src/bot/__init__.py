@@ -1,6 +1,6 @@
 from .router import preguntar_ia
 from .handlers import greet, ping, help_command, unknown_command, translate,time
-from .engine import respuesta
+from .engine import answer
 
 __all__ = [
     "preguntar_ia",
@@ -10,5 +10,5 @@ __all__ = [
     "time",
     "translate",
     "ping",
-    "respuesta"
+    "answer"
 ]

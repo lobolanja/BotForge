@@ -42,7 +42,7 @@ def main():
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, preguntar_ia))
 
     # to make sure it is running
-    print("Bot en ejecución...")
+    print("Bot in execution...")
     bot.run_polling()
 
 # Entry point: ensures main() only runs if script is executed directly
