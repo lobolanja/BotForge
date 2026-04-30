@@ -8,7 +8,7 @@ from functools import wraps
 
 # Here will be all the functions with the commands that are going to be executed 
 
-def requiere_login(func):
+def require_login(func):
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_user: return
@@ -54,7 +54,7 @@ async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Command not found. Use /help to see the available commands.")
 
 # asynchronous function that is used to translate text to another language
-@requiere_login
+@require_login
 async def translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 2:
@@ -103,7 +103,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
 
 # asynchronous function that is used to log out the user by setting their telegram_id to NULL in the database
-@requiere_login
+@require_login
 async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if logout_user(update.effective_user.id):
         await update.message.reply_text("👋 Session closed successfully.")
