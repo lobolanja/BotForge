@@ -93,7 +93,8 @@ docker compose up -d --build
 ```
 
 This starts PostgreSQL, starts Ollama, pulls the configured model, and starts the
-BotForge container after the dependencies are healthy.
+BotForge container after the dependencies are healthy. The BotForge container
+runs database migrations before starting the Telegram polling process.
 
 To use a different Ollama model for this command only, set `OLLAMA_MODEL` before
 the Compose command:
@@ -131,6 +132,7 @@ docker compose logs -f botforge
 Expected BotForge log output:
 
 ```text
+Running upgrade  -> 20260505_0001, create users table
 Bot in execution...
 ```
 
@@ -146,10 +148,30 @@ Check PostgreSQL:
 docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
 ```
 
-## 3. Create The First Bot User
+## 3. Database Migrations
 
-The PostgreSQL container creates the `users` table automatically on first
-startup from `docker/postgres/init/001_schema.sql`.
+BotForge uses Alembic for versioned database migrations. Docker Compose applies
+all pending migrations automatically before starting the bot:
+
+```bash
+docker compose up -d --build
+```
+
+Run migrations manually when developing outside the BotForge container:
+
+```bash
+alembic upgrade head
+```
+
+The initial migration creates the `users` table with:
+
+- `id`
+- `username`
+- `password`
+- `telegram_id`
+- `created_at`
+
+## 4. Create The First Bot User
 
 Generate a bcrypt password hash using the BotForge image:
 
@@ -181,7 +203,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 4. Telegram Smoke Test
+## 5. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
@@ -265,9 +287,10 @@ default project name, these are:
 - `botforge_postgres_data`: PostgreSQL database files
 - `botforge_ollama_data`: downloaded Ollama models
 
-The schema script in `docker/postgres/init/` is applied only when the PostgreSQL
-volume is created for the first time. If the database volume already exists,
-update the schema manually or reset the stack with `docker compose down -v`.
+Database schema changes are applied with Alembic migrations. The compatibility
+schema script in `docker/postgres/init/` is applied only when the PostgreSQL
+volume is created for the first time; Alembic is still the source of truth for
+ongoing schema changes.
 
 ## Local Development
 
@@ -280,6 +303,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
+alembic upgrade head
 ```
 
 For local Python execution outside Docker, change `.env` to reach the exposed or
@@ -306,8 +330,6 @@ python -m mypy src
   Use private chats only until the authentication flow is improved.
 - The default AI model is `gemma2:2b`, but it can be overridden with
   `OLLAMA_MODEL`.
-- The PostgreSQL schema is initialized with a raw SQL script instead of a migration
-  tool.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.
 
