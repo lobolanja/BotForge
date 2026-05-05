@@ -1,5 +1,15 @@
 from .router import ask_ia
-from .handlers import greet, ping, help_command, unknown_command, translate,time, login, status, logout
+from .handlers import (
+    greet,
+    ping,
+    help_command,
+    unknown_command,
+    translate,
+    time,
+    login,
+    status,
+    logout,
+)
 from .engine import answer
 
 __all__ = [
@@ -13,5 +23,5 @@ __all__ = [
     "time",
     "translate",
     "ping",
-    "answer"
+    "answer",
 ]
