@@ -14,6 +14,15 @@ The stack runs as separate containers:
 The bot uses Telegram long polling, so it does not need an inbound public HTTP
 port or a webhook URL.
 
+## Product Roadmap
+
+The beta roadmap is tracked in GitHub issues:
+
+- [Beta readiness issue board](https://github.com/lobolanja/BotForge/issues)
+- [Recommended task order](tasks/README.md)
+- [Product vision and user stories](tasks/product-vision-user-stories.md)
+- [Customer journeys](tasks/customer-journeys.md)
+
 ## Runtime Architecture
 
 ```text
