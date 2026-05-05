@@ -6,17 +6,24 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 
-
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma2:2b"
 
 
 class SettingsError(RuntimeError):
-    """Raised when required runtime configuration is missing or invalid."""
+    """Signal missing or invalid runtime configuration."""
 
 
 def _clean(value: str | None) -> str | None:
+    """Normalize a raw environment variable value.
+
+    Args:
+        value: Value read from the environment.
+
+    Returns:
+        The stripped value, or None when the value is missing or empty.
+    """
     if value is None:
         return None
     value = value.strip()
@@ -25,6 +32,19 @@ def _clean(value: str | None) -> str | None:
 
 @dataclass(frozen=True)
 class Settings:
+    """Validated runtime settings used by the BotForge application.
+
+    Attributes:
+        telegram_token: Token used to connect to the Telegram Bot API.
+        db_host: PostgreSQL host name or address.
+        db_user: PostgreSQL user name.
+        db_password: PostgreSQL user password.
+        db_name: PostgreSQL database name.
+        db_port: PostgreSQL port.
+        ollama_host: Base URL of the Ollama server.
+        ollama_model: Ollama model used to answer text messages.
+    """
+
     telegram_token: str
     db_host: str
     db_user: str
@@ -36,6 +56,17 @@ class Settings:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
+        """Build settings from an environment mapping.
+
+        Args:
+            env: Mapping containing environment variable names and values.
+
+        Returns:
+            A Settings instance with required values and defaults applied.
+
+        Raises:
+            SettingsError: If a required setting is missing or DB_PORT is invalid.
+        """
         required = {
             "TELEGRAM_TOKEN": _clean(env.get("TELEGRAM_TOKEN")),
             "DB_HOST": _clean(env.get("DB_HOST")),
@@ -47,7 +78,8 @@ class Settings:
         if missing:
             names = ", ".join(missing)
             raise SettingsError(
-                f"Missing required settings: {names}. Add them to .env or the environment."
+                f"Missing required settings: {names}. "
+                "Add them to .env or the environment."
             )
 
         db_port = _parse_db_port(env.get("DB_PORT"))
@@ -65,6 +97,11 @@ class Settings:
 
     @property
     def database_url(self) -> str:
+        """Return the SQLAlchemy-compatible PostgreSQL connection URL.
+
+        Returns:
+            A PostgreSQL URL using the psycopg SQLAlchemy driver.
+        """
         user = quote(self.db_user, safe="")
         password = quote(self.db_password, safe="")
         host = quote(self.db_host, safe="")
@@ -76,6 +113,17 @@ class Settings:
 
 
 def _parse_db_port(value: str | None) -> int:
+    """Parse and validate the DB_PORT setting.
+
+    Args:
+        value: Raw DB_PORT value read from the environment.
+
+    Returns:
+        The parsed port, or the default port when no value is provided.
+
+    Raises:
+        SettingsError: If the value is not an integer or is outside the TCP range.
+    """
     cleaned = _clean(value)
     if cleaned is None:
         return DEFAULT_DB_PORT
@@ -90,11 +138,24 @@ def _parse_db_port(value: str | None) -> int:
 
 @lru_cache
 def get_settings() -> Settings:
+    """Load dotenv values once and return cached runtime settings.
+
+    Returns:
+        The validated Settings instance for the current process.
+
+    Raises:
+        SettingsError: If required configuration is missing or invalid.
+    """
     load_dotenv()
     return Settings.from_env()
 
 
 def validate_settings() -> None:
+    """Validate process settings and exit with a clear startup error if needed.
+
+    Raises:
+        SystemExit: If the current environment cannot produce valid settings.
+    """
     try:
         get_settings()
     except SettingsError as error:
