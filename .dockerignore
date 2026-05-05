@@ -10,4 +10,4 @@ __pycache__/
 .env
 build/
 dist/
-docker/mariadb/data/
+docker/postgres/data/

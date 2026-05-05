@@ -1,13 +1,13 @@
 # BotForge
 
 BotForge is a Docker-first Telegram chatbot stack. The Python bot receives
-Telegram messages, checks login state in MariaDB, and sends normal text messages
+Telegram messages, checks login state in PostgreSQL, and sends normal text messages
 to a local Ollama model.
 
 The stack runs as separate containers:
 
 - `botforge`: Python Telegram bot process
-- `mariadb`: database for users and Telegram login state
+- `postgres`: database for users and Telegram login state
 - `ollama`: local LLM server
 - `ollama-pull`: one-shot container that downloads the configured Ollama model
 
@@ -33,13 +33,13 @@ Telegram Bot API
     |
     v
 botforge container
-    |-- mariadb container: users, bcrypt passwords, telegram_id login state
+    |-- postgres container: users, bcrypt passwords, telegram_id login state
     `-- ollama container: local model responses with OLLAMA_MODEL
 ```
 
 Default internal service endpoints:
 
-- MariaDB: `mariadb:3306`
+- PostgreSQL: `postgres:5432`
 - Ollama: `http://ollama:11434`
 - BotForge: no inbound port; it connects outbound to Telegram with polling
 
@@ -64,13 +64,11 @@ development defaults:
 ```env
 TELEGRAM_TOKEN=<telegram_bot_token>
 
-DB_HOST=mariadb
+DB_HOST=postgres
 DB_USER=botforge
 DB_PASSWORD=botforge_dev_password
 DB_NAME=botforge
-DB_PORT=3306
-
-MARIADB_ROOT_PASSWORD=botforge_root_password
+DB_PORT=5432
 
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_MODEL=gemma2:2b
@@ -82,7 +80,7 @@ Notes:
   the angle brackets.
 - The database credentials above are development defaults. Change them before
   using this stack outside your local machine.
-- `DB_HOST` must be `mariadb` when running inside Docker Compose.
+- `DB_HOST` must be `postgres` when running inside Docker Compose.
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
 - `OLLAMA_MODEL` is used by both the `ollama-pull` container and the BotForge
   runtime. The default in this template is `gemma2:2b`, the small Gemma 2 model.
@@ -94,7 +92,7 @@ Notes:
 docker compose up -d --build
 ```
 
-This starts MariaDB, starts Ollama, pulls the configured model, and starts the
+This starts PostgreSQL, starts Ollama, pulls the configured model, and starts the
 BotForge container after the dependencies are healthy.
 
 To use a different Ollama model for this command only, set `OLLAMA_MODEL` before
@@ -106,6 +104,17 @@ OLLAMA_MODEL=<ollama_model> docker compose up -d --build
 
 For a smaller development machine, choose a model that your hardware can run,
 for example the default `gemma2:2b` or another small model supported by Ollama.
+
+If you previously ran the older MariaDB-based local stack, update your `.env`
+from `.env.example` and remove old Compose containers:
+
+```bash
+docker compose down --remove-orphans
+docker compose up -d --build
+```
+
+For a fully clean local database after the engine change, use
+`docker compose down -v` instead. That deletes local Docker volumes.
 
 Check container status:
 
@@ -131,16 +140,16 @@ Check Ollama:
 docker compose exec ollama ollama list
 ```
 
-Check MariaDB:
+Check PostgreSQL:
 
 ```bash
-docker compose exec mariadb sh -lc 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE" -e "SHOW TABLES;"'
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
 ```
 
 ## 3. Create The First Bot User
 
-The MariaDB container creates the `users` table automatically on first startup
-from `docker/mariadb/init/001_schema.sh`.
+The PostgreSQL container creates the `users` table automatically on first
+startup from `docker/postgres/init/001_schema.sql`.
 
 Generate a bcrypt password hash using the BotForge image:
 
@@ -153,10 +162,10 @@ print(bcrypt.hashpw(password, bcrypt.gensalt()).decode())
 PY
 ```
 
-Open a MariaDB shell:
+Open a PostgreSQL shell:
 
 ```bash
-docker compose exec mariadb sh -lc 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
 Insert the initial user, replacing the hash value:
@@ -166,10 +175,10 @@ INSERT INTO users (username, password)
 VALUES ('<bot_user>', '<generated_bcrypt_hash>');
 ```
 
-Exit MariaDB:
+Exit PostgreSQL:
 
 ```sql
-exit
+\q
 ```
 
 ## 4. Telegram Smoke Test
@@ -216,7 +225,7 @@ View logs:
 ```bash
 docker compose logs -f
 docker compose logs -f botforge
-docker compose logs -f mariadb
+docker compose logs -f postgres
 docker compose logs -f ollama
 ```
 
@@ -245,7 +254,7 @@ Delete all containers and persistent data:
 docker compose down -v
 ```
 
-Use `docker compose down -v` carefully. It removes the MariaDB and Ollama volumes,
+Use `docker compose down -v` carefully. It removes the PostgreSQL and Ollama volumes,
 including users and downloaded models.
 
 ## Persistent Data
@@ -253,12 +262,12 @@ including users and downloaded models.
 Docker Compose creates named volumes with the Compose project prefix. With the
 default project name, these are:
 
-- `botforge_mariadb_data`: MariaDB database files
+- `botforge_postgres_data`: PostgreSQL database files
 - `botforge_ollama_data`: downloaded Ollama models
 
-The schema script in `docker/mariadb/init/` is applied only when the MariaDB volume
-is created for the first time. If the database volume already exists, update the
-schema manually or reset the stack with `docker compose down -v`.
+The schema script in `docker/postgres/init/` is applied only when the PostgreSQL
+volume is created for the first time. If the database volume already exists,
+update the schema manually or reset the stack with `docker compose down -v`.
 
 ## Local Development
 
@@ -266,7 +275,7 @@ You can use the same Docker stack for development:
 
 ```bash
 cp .env.example .env
-docker compose up -d mariadb ollama ollama-pull
+docker compose up -d postgres ollama ollama-pull
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -274,7 +283,7 @@ python -m pip install -e ".[dev]"
 ```
 
 For local Python execution outside Docker, change `.env` to reach the exposed or
-local services you are using. If you run MariaDB and Ollama only inside Compose,
+local services you are using. If you run PostgreSQL and Ollama only inside Compose,
 the current `docker-compose.yml` does not expose their ports to the host.
 
 Run locally:
@@ -297,7 +306,7 @@ python -m mypy src
   Use private chats only until the authentication flow is improved.
 - The default AI model is `gemma2:2b`, but it can be overridden with
   `OLLAMA_MODEL`.
-- The MariaDB schema is initialized with a raw SQL script instead of a migration
+- The PostgreSQL schema is initialized with a raw SQL script instead of a migration
   tool.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.

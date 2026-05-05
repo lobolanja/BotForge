@@ -10,7 +10,7 @@ readme = "README.md"
 
 license = { text = "PolyForm Noncommercial License 1.0.0" }
 requires-python = ">=3.10"
-keywords = ["telegram", "bot", "ollama", "ai", "llm", "chatbot", "python", "mariadb", "bcrypt"]
+keywords = ["telegram", "bot", "ollama", "ai", "llm", "chatbot", "python", "postgresql", "bcrypt"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -32,7 +32,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "ollama>=0.4.0",
     "deep-translator>=1.11.0",
-    "mysql-connector-python>=8.0.0",
+    "psycopg[binary]>=3.2.0",
     "bcrypt>=4.1.0",
 ]
 
