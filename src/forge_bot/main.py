@@ -1,4 +1,5 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+
 from . import (
     ask_ia,
     greet,
@@ -11,23 +12,17 @@ from . import (
     status,
     logout,
 )
-import os
-from dotenv import load_dotenv
-
-# Loads environment variables from the .env file into the system
-load_dotenv()
+from .config import SettingsError, get_settings
 
 
 def main():
-    # Retrieve the token from the environment variables
-    token = os.getenv("TELEGRAM_TOKEN")
-
-    if not token:
-        print("Error: TELEGRAM_TOKEN not found in .env file")
-        return
+    try:
+        settings = get_settings()
+    except SettingsError as error:
+        raise SystemExit(f"Configuration error: {error}") from None
 
     # variable that contains the bot that is the one you are working with
-    bot = Application.builder().token(token).build()
+    bot = Application.builder().token(settings.telegram_token).build()
 
     # call to the 'saludar' command
     bot.add_handler(CommandHandler("greet", greet))

@@ -1,15 +1,15 @@
 import ollama
-import os
 
-DEFAULT_OLLAMA_MODEL = "gemma2:2b"
+from .config import get_settings
 
 
 # this function calls the designated AI model and passes it the user and message
 async def answer(user, msg):
-    model = os.getenv("OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL
+    settings = get_settings()
+    client = ollama.Client(host=settings.ollama_host)
 
-    response = ollama.chat(
-        model=model,
+    response = client.chat(
+        model=settings.ollama_model,
         messages=[{"role": "user", "content": f"{user} dice: {msg}"}],
     )
     return response.message.content
