@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "botforge"
+version = "0.1.0"
+description = "BotForge is a modular Python framework for building Telegram bots with custom logic, AI model orchestration, and local LLM support."
+readme = "README.md"
+
+license = { text = "PolyForm Noncommercial License 1.0.0" }
+requires-python = ">=3.10"
+keywords = ["telegram", "bot", "ollama", "ai", "llm", "chatbot", "python", "mariadb", "bcrypt"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Chat",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+
+dependencies = [
+    "python-telegram-bot>=21.0",
+    "python-dotenv>=1.0.0",
+    "ollama>=0.4.0",
+    "deep-translator>=1.11.0",
+    "mysql-connector-python>=8.0.0",
+    "bcrypt>=4.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4.0",
+    "mypy>=1.10",
+    "types-python-dateutil",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
