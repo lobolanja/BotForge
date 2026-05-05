@@ -23,7 +23,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = status_user(update.effective_user.id)
     if user:
         await update.message.reply_text(
-            f"✅ You are logged in as: {user['username']}\n" f"Use /logout to log out."
+            f"✅ You are logged in as: {user['username']}\nUse /logout to log out."
         )
     else:
         await update.message.reply_text("❌ You are not logged in.")
