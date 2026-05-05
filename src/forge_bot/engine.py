@@ -1,5 +1,6 @@
-import ollama
 import os
+
+import ollama
 
 DEFAULT_OLLAMA_MODEL = "gemma2:2b"
 
