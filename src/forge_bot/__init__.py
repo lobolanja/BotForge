@@ -1,16 +1,16 @@
-from .router import ask_ia
-from .handlers import (
+from .commands import (
     greet,
-    ping,
     help_command,
-    unknown_command,
-    translate,
-    time,
     login,
-    status,
     logout,
+    ping,
+    status,
+    time,
+    translate,
+    unknown_command,
 )
 from .engine import answer
+from .router import ask_ia
 
 __all__ = [
     "ask_ia",

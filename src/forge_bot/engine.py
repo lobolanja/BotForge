@@ -1,6 +1,8 @@
+import os
+
 import ollama
 
-from .config import get_settings
+DEFAULT_OLLAMA_MODEL = "gemma2:2b"
 
 
 # this function calls the designated AI model and passes it the user and message

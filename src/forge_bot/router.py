@@ -1,7 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+
 from . import engine
-from .handlers import require_login
+from .commands import require_login
 
 # This file manages the conversation logic:
 # It receives the message, triggers the "typing" status, and calls the AI.
@@ -9,7 +10,7 @@ from .handlers import require_login
 
 @require_login
 async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Variables containing the user's message and first name
+    # Build the user-specific prompt from the Telegram message context.
     message = update.message.text
     user = update.effective_user.first_name
 
