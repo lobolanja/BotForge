@@ -21,12 +21,10 @@ load_dotenv()
 
 
 def main():
-    # Retrieve the token from the environment variables
-    token = os.getenv("TELEGRAM_TOKEN")
-
-    if not token:
-        print("Error: TELEGRAM_TOKEN not found in .env file")
-        return
+    try:
+        settings = get_settings()
+    except SettingsError as error:
+        raise SystemExit(f"Configuration error: {error}") from None
 
     # This is the central registry for the Telegram command handlers.
     bot = Application.builder().token(token).build()

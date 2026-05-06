@@ -1,11 +1,8 @@
-import os
-
 import bcrypt
 import psycopg
-from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
-load_dotenv()
+from .config import get_settings
 
 
 # Function to hash a password using bcrypt
@@ -14,13 +11,14 @@ def verify_password(password, hash_db):
 
 
 def conect_db():
+    settings = get_settings()
     try:
         connection = psycopg.connect(
-            host=os.getenv("DB_HOST"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            dbname=os.getenv("DB_NAME"),
-            port=os.getenv("DB_PORT"),
+            host=settings.db_host,
+            user=settings.db_user,
+            password=settings.db_password,
+            dbname=settings.db_name,
+            port=settings.db_port,
             row_factory=dict_row,
         )
         return connection

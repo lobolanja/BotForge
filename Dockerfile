@@ -7,6 +7,8 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir .
@@ -14,4 +16,4 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 RUN useradd --system --create-home --home-dir /home/botforge botforge
 USER botforge
 
-CMD ["python", "-m", "forge_bot.main"]
+CMD ["sh", "-c", "python -c 'from forge_bot.config import validate_settings; validate_settings()' && alembic upgrade head && python -m forge_bot.main"]
