@@ -117,8 +117,7 @@ class Settings:
         host = quote(self.db_host, safe="")
         database = quote(self.db_name, safe="")
         return (
-            f"postgresql+psycopg://{user}:{password}"
-            f"@{host}:{self.db_port}/{database}"
+            f"postgresql+psycopg://{user}:{password}@{host}:{self.db_port}/{database}"
         )
 
 

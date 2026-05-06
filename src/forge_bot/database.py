@@ -5,12 +5,17 @@ from psycopg.rows import dict_row
 from .config import get_settings
 
 
-# Function to hash a password using bcrypt
 def verify_password(password, hash_db):
+    """Compare a plain password with the stored bcrypt hash."""
     return bcrypt.checkpw(password.encode("utf-8"), hash_db.encode("utf-8"))
 
 
 def conect_db():
+    """Open a PostgreSQL connection using validated application settings.
+
+    Returns:
+        A psycopg connection when the database is reachable, otherwise None.
+    """
     settings = get_settings()
     try:
         connection = psycopg.connect(
@@ -28,6 +33,7 @@ def conect_db():
 
 
 def verify_user(telegram_id):
+    """Check whether a Telegram user is linked to an authenticated account."""
     conn = conect_db()
     if not conn:
         return False
@@ -43,6 +49,7 @@ def verify_user(telegram_id):
 
 
 def login_user(username, password, telegram_id):
+    """Validate credentials and link the Telegram ID to the database user."""
     conn = conect_db()
     if not conn:
         return False
@@ -68,6 +75,7 @@ def login_user(username, password, telegram_id):
 
 
 def logout_user(telegram_id):
+    """Remove the Telegram ID link so the user must log in again later."""
     conn = conect_db()
     if not conn:
         return False
@@ -84,6 +92,7 @@ def logout_user(telegram_id):
 
 
 def status_user(telegram_id):
+    """Return the logged-in username for a Telegram ID, if one exists."""
     conn = conect_db()
     if not conn:
         return None
