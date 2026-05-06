@@ -34,7 +34,7 @@ Telegram Bot API
     v
 botforge container
     |-- postgres container: users, bcrypt passwords, telegram_id login state
-    `-- ollama container: local model responses with OLLAMA_MODEL
+    `-- ollama container: local model responses with the active profile model
 ```
 
 Default internal service endpoints:
@@ -72,6 +72,9 @@ DB_PORT=5432
 
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_MODEL=gemma2:2b
+
+BOT_PROFILE=default_dev
+BOT_PROFILES_DIR=bot_profiles
 ```
 
 Notes:
@@ -82,9 +85,62 @@ Notes:
   using this stack outside your local machine.
 - `DB_HOST` must be `postgres` when running inside Docker Compose.
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
-- `OLLAMA_MODEL` is used by both the `ollama-pull` container and the BotForge
-  runtime. The default in this template is `gemma2:2b`, the small Gemma 2 model.
+- `OLLAMA_MODEL` is used by the `ollama-pull` container. Keep it aligned with
+  the active profile's `llm_model`. The default is `gemma2:2b`, the small
+  Gemma 2 model.
+- `BOT_PROFILE` selects the active bot-specific behavior. The default
+  `default_dev` profile lives in `bot_profiles/default_dev/`.
+- `BOT_PROFILES_DIR` points to the directory that contains profile folders.
 - Do not commit `.env`.
+
+## Bot Profiles And Prompt Configuration
+
+Bot-specific behavior belongs in `bot_profiles/`, not in Telegram routing,
+authentication, database, or runtime infrastructure code. Each profile has its
+own folder:
+
+```text
+bot_profiles/
+  default_dev/
+    profile.json
+    system_prompt.md
+```
+
+`profile.json` defines the assistant identity, model choice, feature flags,
+domain rules, disclaimer, and language defaults. Long prompts should live in a
+Markdown file referenced by `system_prompt_file`.
+
+Required profile fields:
+
+```text
+bot_profile_id
+bot_display_name
+bot_description
+system_prompt or system_prompt_file
+domain_rules
+disclaimer_text
+default_language
+llm_provider
+llm_model
+memory_enabled
+analytics_enabled
+```
+
+To create a new bot profile:
+
+1. Copy `bot_profiles/default_dev/` to `bot_profiles/<new_profile_id>/`.
+2. Update `profile.json`, making sure `bot_profile_id` matches the folder name.
+3. Edit `system_prompt.md` with the assistant's role and behavior.
+4. Put domain-specific rules in `domain_rules`.
+5. Set `llm_model` to the Ollama model the bot should use.
+6. Set `BOT_PROFILE=<new_profile_id>` in `.env`.
+7. If the model changed, set `OLLAMA_MODEL` to the same value so Compose pulls it.
+8. Restart the bot container.
+
+The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
+deterministic order: bot system prompt and rules first, optional memory, recent
+conversation messages, then the current user message. Memory inputs are wired as
+empty for now because memory implementation is outside the current scope.
 
 ## 2. Build And Start The Stack
 
@@ -267,7 +323,12 @@ Pull and switch to a different model:
 
 ```bash
 OLLAMA_MODEL=<ollama_model> docker compose run --rm ollama-pull
-OLLAMA_MODEL=<ollama_model> docker compose up -d --force-recreate botforge
+```
+
+Then update the active profile's `llm_model` and restart BotForge:
+
+```bash
+docker compose up -d --force-recreate botforge
 ```
 
 Delete all containers and persistent data:
@@ -328,8 +389,8 @@ python -m mypy src
 
 - `/login` currently receives the username and password inside Telegram chat.
   Use private chats only until the authentication flow is improved.
-- The default AI model is `gemma2:2b`, but it can be overridden with
-  `OLLAMA_MODEL`.
+- The default AI profile uses `gemma2:2b`. Change the active profile's
+  `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.
 

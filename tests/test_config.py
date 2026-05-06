@@ -1,6 +1,8 @@
 import pytest
 
 from forge_bot.config import (
+    DEFAULT_BOT_PROFILE,
+    DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_DB_PORT,
     DEFAULT_OLLAMA_MODEL,
     Settings,
@@ -39,3 +41,5 @@ def test_defaults_are_applied() -> None:
 
     assert settings.db_port == DEFAULT_DB_PORT
     assert settings.ollama_model == DEFAULT_OLLAMA_MODEL
+    assert settings.bot_profile == DEFAULT_BOT_PROFILE
+    assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR

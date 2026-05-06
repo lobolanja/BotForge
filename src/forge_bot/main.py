@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
+from .bot_profile import BotProfileError, load_active_bot_profile
 from .commands import (
     greet,
     help_command,
@@ -14,20 +15,28 @@ from .commands import (
     translate,
     unknown_command,
 )
+from .config import SettingsError, get_settings
 from .router import ask_ia
 
-# Loads environment variables from the .env file into the system
+# Load .env values before validating process configuration.
 load_dotenv()
 
 
 def main():
+    """Start the Telegram bot after validating shared and bot-specific config."""
     try:
         settings = get_settings()
+        load_active_bot_profile(
+            settings.bot_profile,
+            settings.bot_profiles_dir,
+        )
     except SettingsError as error:
         raise SystemExit(f"Configuration error: {error}") from None
+    except BotProfileError as error:
+        raise SystemExit(f"Bot profile error: {error}") from None
 
-    # This is the central registry for the Telegram command handlers.
-    bot = Application.builder().token(token).build()
+    # This is the central registry for Telegram command handlers.
+    bot = Application.builder().token(settings.telegram_token).build()
 
     bot.add_handler(CommandHandler("greet", greet))
     bot.add_handler(CommandHandler("ping", ping))
@@ -45,11 +54,11 @@ def main():
     # Non-command text is routed to the AI conversation flow.
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
 
-    # to make sure it is running
+    # Log a short startup signal for Docker and local development.
     print("Bot in execution...")
     bot.run_polling()
 
 
-# Entry point: ensures main() only runs if script is executed directly
+# Run the app only when this module is executed directly.
 if __name__ == "__main__":
     main()

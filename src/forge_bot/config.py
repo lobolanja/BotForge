@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma2:2b"
+DEFAULT_BOT_PROFILE = "default_dev"
+DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 
 
 class SettingsError(RuntimeError):
@@ -42,7 +44,9 @@ class Settings:
         db_name: PostgreSQL database name.
         db_port: PostgreSQL port.
         ollama_host: Base URL of the Ollama server.
-        ollama_model: Ollama model used to answer text messages.
+        ollama_model: Model pulled by the Ollama helper container.
+        bot_profile: Active bot profile folder name.
+        bot_profiles_dir: Directory containing all bot profile folders.
     """
 
     telegram_token: str
@@ -53,6 +57,8 @@ class Settings:
     db_port: int = DEFAULT_DB_PORT
     ollama_host: str = DEFAULT_OLLAMA_HOST
     ollama_model: str = DEFAULT_OLLAMA_MODEL
+    bot_profile: str = DEFAULT_BOT_PROFILE
+    bot_profiles_dir: str = DEFAULT_BOT_PROFILES_DIR
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
@@ -93,6 +99,10 @@ class Settings:
             db_port=db_port,
             ollama_host=_clean(env.get("OLLAMA_HOST")) or DEFAULT_OLLAMA_HOST,
             ollama_model=_clean(env.get("OLLAMA_MODEL")) or DEFAULT_OLLAMA_MODEL,
+            bot_profile=_clean(env.get("BOT_PROFILE")) or DEFAULT_BOT_PROFILE,
+            bot_profiles_dir=(
+                _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
+            ),
         )
 
     @property
