@@ -7,6 +7,7 @@ from .time import time
 from .translate import translate
 from .unknown import unknown_command
 
+# Re-export command handlers from one place so main.py can stay compact.
 __all__ = [
     "greet",
     "help_command",
