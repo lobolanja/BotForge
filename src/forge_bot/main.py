@@ -1,18 +1,20 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from . import (
-    ask_ia,
-    greet,
-    ping,
-    help_command,
-    unknown_command,
-    translate,
-    time,
-    login,
-    status,
-    logout,
-)
 import os
+
 from dotenv import load_dotenv
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+
+from .commands import (
+    greet,
+    help_command,
+    login,
+    logout,
+    ping,
+    status,
+    time,
+    translate,
+    unknown_command,
+)
+from .router import ask_ia
 
 # Loads environment variables from the .env file into the system
 load_dotenv()
@@ -26,40 +28,23 @@ def main():
         print("Error: TELEGRAM_TOKEN not found in .env file")
         return
 
-    # variable that contains the bot that is the one you are working with
+    # This is the central registry for the Telegram command handlers.
     bot = Application.builder().token(token).build()
 
-    # call to the 'saludar' command
     bot.add_handler(CommandHandler("greet", greet))
-
-    # call to the 'ping' command
     bot.add_handler(CommandHandler("ping", ping))
-
-    # call to the 'help' command
     bot.add_handler(CommandHandler("help", help_command))
-
-    # call to the 'unknown' command
     bot.add_handler(CommandHandler("unknown", unknown_command))
-
-    # call to the 'translate' command
     bot.add_handler(CommandHandler("translate", translate))
-
-    # call to the 'time' command
     bot.add_handler(CommandHandler("time", time))
-
-    # call to the 'login' command
     bot.add_handler(CommandHandler("login", login))
-
-    # call to the 'status' command
     bot.add_handler(CommandHandler("status", status))
-
-    # call to the 'logout' command
     bot.add_handler(CommandHandler("logout", logout))
 
-    # call to the 'unknown' command
+    # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
-    # call to the ia
+    # Non-command text is routed to the AI conversation flow.
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
 
     # to make sure it is running
