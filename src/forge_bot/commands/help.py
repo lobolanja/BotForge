@@ -2,7 +2,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
+
     # This text is the single user-facing list of currently supported commands.
     help_text = (
         "Available commands:\n"

@@ -6,8 +6,11 @@ from .auth_guard import require_login
 
 
 @require_login
-async def translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
+async def translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message:
+        return
+
+    args = context.args or []
     if len(args) < 2:
         await update.message.reply_text(
             "Correct usage: /translate <language> <text>\n"
@@ -22,8 +25,8 @@ async def translate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resultado = GoogleTranslator(source="auto", target=idioma_destino).translate(
             texto
         )
-    except Exception as e:
-        await update.message.reply_text(f"Error translating: {e}")
+    except Exception as error:
+        await update.message.reply_text(f"Error translating: {error}")
         return
 
     await update.message.reply_text(

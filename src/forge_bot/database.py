@@ -1,3 +1,5 @@
+from typing import Any
+
 import bcrypt
 import psycopg
 from psycopg.rows import dict_row
@@ -5,12 +7,12 @@ from psycopg.rows import dict_row
 from .config import get_settings
 
 
-def verify_password(password, hash_db):
+def verify_password(password: str, hash_db: str) -> bool:
     """Compare a plain password with the stored bcrypt hash."""
     return bcrypt.checkpw(password.encode("utf-8"), hash_db.encode("utf-8"))
 
 
-def conect_db():
+def conect_db() -> Any | None:
     """Open a PostgreSQL connection using validated application settings.
 
     Returns:
@@ -32,7 +34,7 @@ def conect_db():
         return None
 
 
-def verify_user(telegram_id):
+def verify_user(telegram_id: int) -> bool:
     """Check whether a Telegram user is linked to an authenticated account."""
     conn = conect_db()
     if not conn:
@@ -48,7 +50,7 @@ def verify_user(telegram_id):
         conn.close()
 
 
-def login_user(username, password, telegram_id):
+def login_user(username: str, password: str, telegram_id: int) -> bool:
     """Validate credentials and link the Telegram ID to the database user."""
     conn = conect_db()
     if not conn:
@@ -74,7 +76,7 @@ def login_user(username, password, telegram_id):
         conn.close()
 
 
-def logout_user(telegram_id):
+def logout_user(telegram_id: int) -> bool:
     """Remove the Telegram ID link so the user must log in again later."""
     conn = conect_db()
     if not conn:
@@ -86,12 +88,13 @@ def logout_user(telegram_id):
                 (telegram_id,),
             )
             conn.commit()
-            return cursor.rowcount > 0
+            affected_rows = int(cursor.rowcount or 0)
+            return affected_rows > 0
     finally:
         conn.close()
 
 
-def status_user(telegram_id):
+def status_user(telegram_id: int) -> dict[str, Any] | None:
     """Return the logged-in username for a Telegram ID, if one exists."""
     conn = conect_db()
     if not conn:
@@ -102,6 +105,7 @@ def status_user(telegram_id):
                 "SELECT username FROM users WHERE telegram_id = %s",
                 (telegram_id,),
             )
-            return cursor.fetchone()
+            user: dict[str, Any] | None = cursor.fetchone()
+            return user
     finally:
         conn.close()

@@ -39,4 +39,4 @@ async def answer(
         model=active_profile.llm_model,
         messages=messages,
     )
-    return response.message.content
+    return response.message.content or ""

@@ -20,7 +20,7 @@ from .router import ask_ia
 load_dotenv()
 
 
-def main():
+def main() -> None:
     """Start the Telegram bot after validating shared and bot-specific config."""
     try:
         settings = get_settings()
