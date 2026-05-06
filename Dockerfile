@@ -7,6 +7,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY bot_profiles ./bot_profiles
 COPY alembic.ini ./
 COPY migrations ./migrations
 

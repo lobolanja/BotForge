@@ -11,7 +11,7 @@ from .commands import (
     unknown_command,
 )
 
-# Compatibility exports for older imports; command code lives in forge_bot.commands.
+# Keep legacy imports working while command handlers live in forge_bot.commands.
 __all__ = [
     "greet",
     "help_command",

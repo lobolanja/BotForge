@@ -21,17 +21,16 @@ def upgrade() -> None:
     The migration is idempotent so it can coexist with the legacy Docker
     init SQL that may have already created the table in existing volumes.
     """
-    op.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(100) NOT NULL UNIQUE,
-            password VARCHAR(255) NOT NULL,
-            telegram_id BIGINT NULL UNIQUE,
-            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-        """
+    statement = """
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        telegram_id BIGINT NULL UNIQUE,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
+    """
+    op.execute(statement)
 
 
 def downgrade() -> None:
