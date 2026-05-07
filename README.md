@@ -33,7 +33,7 @@ Telegram Bot API
     |
     v
 botforge container
-    |-- postgres container: users, bcrypt passwords, telegram_id login state
+    |-- postgres container: users, invite tokens, telegram_id login state
     `-- ollama container: local model responses with the active profile model
 ```
 
@@ -75,6 +75,8 @@ OLLAMA_MODEL=gemma2:2b
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
+
+ENABLE_LEGACY_LOGIN=false
 ```
 
 Notes:
@@ -92,6 +94,9 @@ Notes:
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
+- `ENABLE_LEGACY_LOGIN` is disabled by default. Set it to `true` only when you
+  need to register `/login <username> <password>` for local development or a
+  private fork.
 - Do not commit `.env`.
 
 ## Bot Profiles And Prompt Configuration
@@ -228,9 +233,54 @@ The initial migration creates the `users` table with:
 - `telegram_id`
 - `created_at`
 
-## 4. Create The First Bot User
+Later migrations add invite-token authentication:
 
-Generate a bcrypt password hash using the BotForge image:
+- `users.role`
+- `invite_tokens.token_hash`
+- `invite_tokens.role`
+- `invite_tokens.expires_at`
+- `invite_tokens.used_at`
+- `invite_tokens.used_by_user_id`
+- `invite_tokens.created_by_user_id`
+
+## 4. Create The First Invite Link
+
+BotForge authenticates Telegram users through invite links:
+
+```text
+https://t.me/<bot_username>?start=<invite_token>
+```
+
+Generate a beta invite link from the BotForge image, replacing
+`<bot_username>` with the bot username from BotFather:
+
+```powershell
+docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.invite_link)"
+```
+
+Only the hash is stored in PostgreSQL. Send the printed link to the user who
+should join the beta. When the user opens it, Telegram sends `/start <token>` to
+the bot automatically. The token is single-use and expires after the selected
+TTL.
+
+If the `t.me` preview page opens but does not pass the token after pressing
+Start Bot, generate a direct Telegram app URI instead:
+
+```powershell
+docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.app_link)"
+```
+
+That prints a `tg://resolve?...` link, which opens the Telegram app directly and
+avoids the browser preview page.
+
+For emergency local development only, you can still create a password-backed
+legacy user manually. First set this in `.env` and restart the bot:
+
+```env
+ENABLE_LEGACY_LOGIN=true
+```
+
+Then generate a bcrypt password hash:
 
 ```bash
 docker compose run --rm --no-deps botforge python - <<'PY'
@@ -241,13 +291,7 @@ print(bcrypt.hashpw(password, bcrypt.gensalt()).decode())
 PY
 ```
 
-Open a PostgreSQL shell:
-
-```bash
-docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-```
-
-Insert the initial user, replacing the hash value:
+Then insert the user in PostgreSQL, replacing the hash value:
 
 ```sql
 INSERT INTO users (username, password)
@@ -266,7 +310,7 @@ Open a private chat with the bot in Telegram:
 
 ```text
 /help
-/login <bot_user> <bot_user_plain_password>
+<open the invite link>
 /status
 hello
 ```
@@ -393,8 +437,10 @@ python -m radon cc src tests -s -a
 
 ## Current Limitations
 
-- `/login` currently receives the username and password inside Telegram chat.
-  Use private chats only until the authentication flow is improved.
+- Invite generation is currently an operator action. Admin Telegram commands for
+  issuing invites are tracked separately.
+- `/login` is hidden by default. Set `ENABLE_LEGACY_LOGIN=true` to register it
+  as a deprecated local-development fallback for password-backed users.
 - The default AI profile uses `gemma2:2b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
