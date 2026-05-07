@@ -33,7 +33,78 @@ def _clean(value: str | None) -> str | None:
 
 
 @dataclass(frozen=True)
-class Settings:
+class DatabaseSettings:
+    """Validated database settings shared by runtime and migrations.
+
+    Attributes:
+        db_host: PostgreSQL host name or address.
+        db_user: PostgreSQL user name.
+        db_password: PostgreSQL user password.
+        db_name: PostgreSQL database name.
+        db_port: PostgreSQL port.
+    """
+
+    db_host: str
+    db_user: str
+    db_password: str
+    db_name: str
+    db_port: int = DEFAULT_DB_PORT
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] = environ) -> "DatabaseSettings":
+        """Build database settings from an environment mapping.
+
+        Args:
+            env: Mapping containing environment variable names and values.
+
+        Returns:
+            A DatabaseSettings instance with required values and defaults applied.
+
+        Raises:
+            SettingsError: If a required setting is missing or DB_PORT is invalid.
+        """
+        required = {
+            "DB_HOST": _clean(env.get("DB_HOST")),
+            "DB_USER": _clean(env.get("DB_USER")),
+            "DB_PASSWORD": _clean(env.get("DB_PASSWORD")),
+            "DB_NAME": _clean(env.get("DB_NAME")),
+        }
+        missing = [name for name, value in required.items() if value is None]
+        if missing:
+            names = ", ".join(missing)
+            raise SettingsError(
+                f"Missing required settings: {names}. "
+                "Add them to .env or the environment."
+            )
+
+        db_port = _parse_db_port(env.get("DB_PORT"))
+
+        return cls(
+            db_host=required["DB_HOST"] or "",
+            db_user=required["DB_USER"] or "",
+            db_password=required["DB_PASSWORD"] or "",
+            db_name=required["DB_NAME"] or "",
+            db_port=db_port,
+        )
+
+    @property
+    def database_url(self) -> str:
+        """Return the SQLAlchemy-compatible PostgreSQL connection URL.
+
+        Returns:
+            A PostgreSQL URL using the psycopg SQLAlchemy driver.
+        """
+        user = quote(self.db_user, safe="")
+        password = quote(self.db_password, safe="")
+        host = quote(self.db_host, safe="")
+        database = quote(self.db_name, safe="")
+        return (
+            f"postgresql+psycopg://{user}:{password}@{host}:{self.db_port}/{database}"
+        )
+
+
+@dataclass(frozen=True)
+class Settings(DatabaseSettings):
     """Validated runtime settings used by the BotForge application.
 
     Attributes:
@@ -49,12 +120,7 @@ class Settings:
         bot_profiles_dir: Directory containing all bot profile folders.
     """
 
-    telegram_token: str
-    db_host: str
-    db_user: str
-    db_password: str
-    db_name: str
-    db_port: int = DEFAULT_DB_PORT
+    telegram_token: str = ""
     ollama_host: str = DEFAULT_OLLAMA_HOST
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     bot_profile: str = DEFAULT_BOT_PROFILE
@@ -89,7 +155,6 @@ class Settings:
             )
 
         db_port = _parse_db_port(env.get("DB_PORT"))
-
         return cls(
             telegram_token=required["TELEGRAM_TOKEN"] or "",
             db_host=required["DB_HOST"] or "",
@@ -103,21 +168,6 @@ class Settings:
             bot_profiles_dir=(
                 _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
             ),
-        )
-
-    @property
-    def database_url(self) -> str:
-        """Return the SQLAlchemy-compatible PostgreSQL connection URL.
-
-        Returns:
-            A PostgreSQL URL using the psycopg SQLAlchemy driver.
-        """
-        user = quote(self.db_user, safe="")
-        password = quote(self.db_password, safe="")
-        host = quote(self.db_host, safe="")
-        database = quote(self.db_name, safe="")
-        return (
-            f"postgresql+psycopg://{user}:{password}@{host}:{self.db_port}/{database}"
         )
 
 
@@ -143,6 +193,20 @@ def _parse_db_port(value: str | None) -> int:
     if not 1 <= port <= 65535:
         raise SettingsError("DB_PORT must be between 1 and 65535.")
     return port
+
+
+@lru_cache
+def get_database_settings() -> DatabaseSettings:
+    """Load dotenv values once and return cached database-only settings.
+
+    Returns:
+        The validated database settings for the current process.
+
+    Raises:
+        SettingsError: If required database configuration is missing or invalid.
+    """
+    load_dotenv()
+    return DatabaseSettings.from_env()
 
 
 @lru_cache

@@ -5,6 +5,7 @@ from forge_bot.config import (
     DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_DB_PORT,
     DEFAULT_OLLAMA_MODEL,
+    DatabaseSettings,
     Settings,
     SettingsError,
 )
@@ -34,6 +35,15 @@ def test_missing_db_password_fails_fast() -> None:
 
     with pytest.raises(SettingsError, match="DB_PASSWORD"):
         Settings.from_env(env)
+
+
+def test_database_settings_do_not_require_telegram_token() -> None:
+    env = valid_env()
+    del env["TELEGRAM_TOKEN"]
+
+    settings = DatabaseSettings.from_env(env)
+
+    assert settings.db_host == "localhost"
 
 
 def test_defaults_are_applied() -> None:

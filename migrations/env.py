@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from forge_bot.config import get_settings
+from forge_bot.config import get_database_settings
 
 config = context.config
 
@@ -14,7 +14,7 @@ target_metadata = None
 
 
 def _database_url() -> str:
-    settings = get_settings()
+    settings = get_database_settings()
     return settings.database_url
 
 
