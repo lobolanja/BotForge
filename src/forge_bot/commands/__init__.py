@@ -1,4 +1,4 @@
-from .auth import login, login_disabled, logout, start, status
+from .auth import logout, start, status
 from .auth_guard import require_login
 from .greet import greet
 from .help import help_command
@@ -11,8 +11,6 @@ from .unknown import unknown_command
 __all__ = [
     "greet",
     "help_command",
-    "login",
-    "login_disabled",
     "logout",
     "ping",
     "require_login",

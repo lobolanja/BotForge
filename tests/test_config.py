@@ -54,21 +54,3 @@ def test_defaults_are_applied() -> None:
     assert settings.ollama_model == DEFAULT_OLLAMA_MODEL
     assert settings.bot_profile == DEFAULT_BOT_PROFILE
     assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR
-    assert settings.enable_legacy_login is DEFAULT_ENABLE_LEGACY_LOGIN
-
-
-def test_legacy_login_can_be_enabled() -> None:
-    env = valid_env()
-    env["ENABLE_LEGACY_LOGIN"] = "true"
-
-    settings = Settings.from_env(env)
-
-    assert settings.enable_legacy_login is True
-
-
-def test_invalid_boolean_setting_fails_fast() -> None:
-    env = valid_env()
-    env["ENABLE_LEGACY_LOGIN"] = "maybe"
-
-    with pytest.raises(SettingsError, match="true or false"):
-        Settings.from_env(env)

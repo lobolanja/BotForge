@@ -5,8 +5,6 @@ from .bot_profile import BotProfileError, load_active_bot_profile
 from .commands import (
     greet,
     help_command,
-    login,
-    login_disabled,
     logout,
     ping,
     start,
@@ -45,10 +43,6 @@ def main() -> None:
     bot.add_handler(CommandHandler("unknown", unknown_command))
     bot.add_handler(CommandHandler("translate", translate))
     bot.add_handler(CommandHandler("time", time))
-    if settings.enable_legacy_login:
-        bot.add_handler(CommandHandler("login", login))
-    else:
-        bot.add_handler(CommandHandler("login", login_disabled))
     bot.add_handler(CommandHandler("status", status))
     bot.add_handler(CommandHandler("logout", logout))
 
