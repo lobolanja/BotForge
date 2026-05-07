@@ -11,6 +11,7 @@ DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma2:2b"
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
+DEFAULT_ENABLE_LEGACY_LOGIN = False
 
 
 class SettingsError(RuntimeError):
@@ -118,6 +119,7 @@ class Settings(DatabaseSettings):
         ollama_model: Model pulled by the Ollama helper container.
         bot_profile: Active bot profile folder name.
         bot_profiles_dir: Directory containing all bot profile folders.
+        enable_legacy_login: Whether /login username password is registered.
     """
 
     telegram_token: str = ""
@@ -125,6 +127,7 @@ class Settings(DatabaseSettings):
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     bot_profile: str = DEFAULT_BOT_PROFILE
     bot_profiles_dir: str = DEFAULT_BOT_PROFILES_DIR
+    enable_legacy_login: bool = DEFAULT_ENABLE_LEGACY_LOGIN
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
@@ -168,6 +171,10 @@ class Settings(DatabaseSettings):
             bot_profiles_dir=(
                 _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
             ),
+            enable_legacy_login=_parse_bool(
+                env.get("ENABLE_LEGACY_LOGIN"),
+                default=DEFAULT_ENABLE_LEGACY_LOGIN,
+            ),
         )
 
 
@@ -193,6 +200,21 @@ def _parse_db_port(value: str | None) -> int:
     if not 1 <= port <= 65535:
         raise SettingsError("DB_PORT must be between 1 and 65535.")
     return port
+
+
+def _parse_bool(value: str | None, *, default: bool = False) -> bool:
+    """Parse boolean-like environment variables."""
+    cleaned = _clean(value)
+    if cleaned is None:
+        return default
+
+    normalized = cleaned.lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    raise SettingsError("Boolean settings must be true or false.")
 
 
 @lru_cache
