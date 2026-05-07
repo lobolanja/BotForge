@@ -1,5 +1,5 @@
 from .auth import login, logout, status
-from .auth_guard import require_login
+from .auth_guard import admin_required, require_login
 from .greet import greet
 from .help import help_command
 from .ping import ping
@@ -15,6 +15,7 @@ __all__ = [
     "logout",
     "ping",
     "require_login",
+    "admin_required",
     "status",
     "time",
     "translate",
