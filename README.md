@@ -87,7 +87,8 @@ Notes:
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
 - `OLLAMA_MODEL` is used by the `ollama-pull` container. Keep it aligned with
   the active profile's `llm_model`. The default is `gemma2:2b`, the small
-  Gemma 2 model.
+  Gemma 2 model. If these values drift, Compose can pull one model while the
+  bot tries to use another at runtime.
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
@@ -380,9 +381,14 @@ python -m forge_bot.main
 Run checks after installing development dependencies:
 
 ```bash
-python -m pytest
-python -m ruff check .
+python -m ruff format --check src tests
+python -m ruff check src tests
+python -m black --check src tests
+python -m isort --check-only src tests
 python -m mypy src
+python -m pytest
+python -m bandit -r src -ll
+python -m radon cc src tests -s -a
 ```
 
 ## Current Limitations

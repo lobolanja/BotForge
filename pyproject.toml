@@ -40,6 +40,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "bandit[toml]>=1.7.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
     "radon>=6.0.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -58,6 +60,14 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "W"]
 ignore = []
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
 
 [tool.mypy]
 python_version = "3.10"
