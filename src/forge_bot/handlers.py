@@ -1,4 +1,5 @@
 from .commands import (
+    admin_required,
     greet,
     help_command,
     login,

@@ -5,7 +5,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from forge_bot.database import verify_user
+from forge_bot.database import is_admin, verify_user
 
 Handler = Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[Any, Any, None]]
 
@@ -22,6 +22,30 @@ def require_login(func: Handler) -> Handler:
             await update.message.reply_text(
                 "Access denied. Open your Telegram invite link to authenticate."
             )
+            return
+
+        await func(update, context)
+
+    return wrapper
+
+
+def admin_required(func: Handler) -> Handler:
+    """Restrict a Telegram command handler to logged-in admin users."""
+
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not update.effective_user or not update.message:
+            return
+
+        user_id = update.effective_user.id
+        if not verify_user(user_id):
+            await update.message.reply_text(
+                "Access denied. Please log in before using this admin command."
+            )
+            return
+
+        if not is_admin(user_id):
+            await update.message.reply_text("Access denied. Admins only.")
             return
 
         await func(update, context)
