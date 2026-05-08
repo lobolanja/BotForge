@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
-from forge_bot.commands.auth import login_disabled, start
+from forge_bot.commands.auth import start
 from forge_bot.database import (
     InviteRedemption,
     build_invite_link,
     build_telegram_app_link,
     generate_invite_token,
     hash_invite_token,
+    verify_invite_token,
 )
 
 
@@ -31,8 +32,14 @@ def test_invite_token_hash_does_not_store_raw_token() -> None:
 
     assert raw_token
     assert token_hash != raw_token
-    assert len(token_hash) == 64
-    assert hash_invite_token(raw_token) == token_hash
+    assert token_hash.startswith("$2")
+    assert verify_invite_token(raw_token, token_hash)
+
+
+def test_invite_token_hash_is_salted() -> None:
+    raw_token = "raw-token"
+
+    assert hash_invite_token(raw_token) != hash_invite_token(raw_token)
 
 
 def test_build_invite_link_uses_telegram_deep_link() -> None:
@@ -66,12 +73,31 @@ async def test_start_redeems_valid_invite(monkeypatch) -> None:
         return InviteRedemption("success", username="telegram_456", role="user")
 
     monkeypatch.setattr("forge_bot.commands.auth.redeem_invite_token", fake_redeem)
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.current_policy_versions",
+        lambda: SimpleNamespace(
+            policy_version="2026-05-08",
+            privacy_notice_version="2026-05-08",
+        ),
+    )
 
     await start(update, SimpleNamespace(args=["raw-token"]))
 
     assert calls == [("raw-token", 456)]
     assert update.message.messages == [
-        "Invite accepted. You can now chat with BotForge."
+        "Invite accepted.\n\n"
+        "Before you start, you must accept the BotForge usage policy.\n\n"
+        "Summary:\n"
+        "- This bot answers with AI and can make mistakes.\n"
+        "- Do not send secrets or information you do not want processed.\n"
+        "- We store data needed to provide the service.\n"
+        "- Conversation memory may be used to improve your answers.\n"
+        "- Analytics or training consent is handled separately and is not "
+        "enabled here.\n\n"
+        "Use /policy to read the policy, then /accept_policy or "
+        "/decline_policy.\n\n"
+        "Policy version: 2026-05-08\n"
+        "Privacy notice version: 2026-05-08"
     ]
 
 
@@ -87,12 +113,3 @@ async def test_start_reports_used_invite(monkeypatch) -> None:
 
     assert update.message.messages == ["This invite link has already been used."]
 
-
-async def test_login_disabled_points_to_invite_auth() -> None:
-    update = make_update()
-
-    await login_disabled(update, SimpleNamespace(args=[]))
-
-    assert update.message.messages == [
-        "Password login is disabled. Open your Telegram invite link to authenticate."
-    ]

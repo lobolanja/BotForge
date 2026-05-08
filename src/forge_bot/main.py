@@ -13,6 +13,7 @@ from .commands import (
     translate,
     unknown_command,
 )
+from .commands.policy import accept_policy, decline_policy, policy
 from .config import SettingsError, get_settings
 from .router import ask_ia
 
@@ -45,6 +46,9 @@ def main() -> None:
     bot.add_handler(CommandHandler("time", time))
     bot.add_handler(CommandHandler("status", status))
     bot.add_handler(CommandHandler("logout", logout))
+    bot.add_handler(CommandHandler("policy", policy))
+    bot.add_handler(CommandHandler("accept_policy", accept_policy))
+    bot.add_handler(CommandHandler("decline_policy", decline_policy))
 
     # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))

@@ -5,7 +5,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from forge_bot.database import is_admin, verify_user
+from forge_bot.database import has_current_policy_acceptance, is_admin, verify_user
 
 Handler = Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[Any, Any, None]]
 
@@ -21,6 +21,12 @@ def require_login(func: Handler) -> Handler:
         if not verify_user(user_id):
             await update.message.reply_text(
                 "Access denied. Open your Telegram invite link to authenticate."
+            )
+            return
+        if not has_current_policy_acceptance(user_id):
+            await update.message.reply_text(
+                "Please accept the current usage policy before using BotForge. "
+                "Use /policy and then /accept_policy."
             )
             return
 
@@ -43,9 +49,15 @@ def admin_required(func: Handler) -> Handler:
                 "Access denied. Please log in before using this admin command."
             )
             return
-
         if not is_admin(user_id):
             await update.message.reply_text("Access denied. Admins only.")
+            return
+
+        if not has_current_policy_acceptance(user_id):
+            await update.message.reply_text(
+                "Please accept the current usage policy before using BotForge. "
+                "Use /policy and then /accept_policy."
+            )
             return
 
         await func(update, context)

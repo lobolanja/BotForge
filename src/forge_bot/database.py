@@ -1,4 +1,3 @@
-import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -35,9 +34,19 @@ class InviteRedemption:
     role: str | None = None
 
 
-def verify_password(password: str, hash_db: str) -> bool:
-    """Compare a plain password with the stored bcrypt hash."""
-    return bcrypt.checkpw(password.encode("utf-8"), hash_db.encode("utf-8"))
+@dataclass(frozen=True)
+class PolicyVersions:
+    policy_version: str
+    privacy_notice_version: str
+
+
+def current_policy_versions() -> PolicyVersions:
+    """Return the policy versions users must accept before protected use."""
+    settings = get_settings()
+    return PolicyVersions(
+        settings.bot_policy_version,
+        settings.bot_privacy_notice_version,
+    )
 
 
 def generate_invite_token() -> str:
@@ -46,8 +55,19 @@ def generate_invite_token() -> str:
 
 
 def hash_invite_token(raw_token: str) -> str:
-    """Hash an invite token before it is persisted or looked up."""
-    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    """Hash an invite token with bcrypt before storing it."""
+    return bcrypt.hashpw(raw_token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_invite_token(raw_token: str, token_hash: str) -> bool:
+    """Compare a raw invite token with a stored bcrypt hash."""
+    try:
+        return bcrypt.checkpw(
+            raw_token.encode("utf-8"),
+            token_hash.encode("utf-8"),
+        )
+    except ValueError:
+        return False
 
 
 def build_invite_link(bot_username: str, raw_token: str) -> str:
@@ -137,31 +157,113 @@ def is_admin(telegram_id: int) -> bool:
     return is_admin_role(get_user_role_by_telegram_id(telegram_id))
 
 
-def login_user(username: str, password: str, telegram_id: int) -> bool:
-    """Validate credentials and link the Telegram ID to the database user."""
+def has_current_policy_acceptance(telegram_id: int) -> bool:
+    """Check whether the Telegram user accepted the current required policy."""
+    versions = current_policy_versions()
     conn = conect_db()
     if not conn:
         return False
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, password FROM users WHERE username = %s",
-                (username,),
+                """
+                SELECT 1
+                FROM user_policy_acceptances upa
+                JOIN users u ON u.id = upa.user_id
+                WHERE u.telegram_id = %s
+                  AND upa.policy_version = %s
+                  AND upa.privacy_notice_version = %s
+                  AND upa.accepted_at IS NOT NULL
+                  AND upa.revoked_at IS NULL
+                LIMIT 1
+                """,
+                (
+                    telegram_id,
+                    versions.policy_version,
+                    versions.privacy_notice_version,
+                ),
             )
-            user = cursor.fetchone()
+            return cursor.fetchone() is not None
+    finally:
+        conn.close()
 
-            if not user or not user["password"]:
-                return False
 
-            if not verify_password(password, user["password"]):
-                return False
-
+def accept_current_policy(telegram_id: int, source: str = "telegram") -> bool:
+    """Store acceptance for the current policy versions."""
+    versions = current_policy_versions()
+    conn = conect_db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cursor:
             cursor.execute(
-                "UPDATE users SET telegram_id = %s WHERE id = %s",
-                (telegram_id, user["id"]),
+                """
+                INSERT INTO user_policy_acceptances (
+                    user_id,
+                    policy_version,
+                    privacy_notice_version,
+                    accepted_at,
+                    source
+                )
+                SELECT id, %s, %s, CURRENT_TIMESTAMP, %s
+                FROM users
+                WHERE telegram_id = %s
+                ON CONFLICT (
+                    user_id,
+                    policy_version,
+                    privacy_notice_version,
+                    source
+                )
+                DO UPDATE SET
+                    accepted_at = CURRENT_TIMESTAMP,
+                    revoked_at = NULL
+                """,
+                (
+                    versions.policy_version,
+                    versions.privacy_notice_version,
+                    source,
+                    telegram_id,
+                ),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0) > 0
+    except psycopg.Error:
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def decline_current_policy(telegram_id: int) -> bool:
+    """Record that the user remains blocked by revoking current acceptance."""
+    versions = current_policy_versions()
+    conn = conect_db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE user_policy_acceptances upa
+                SET revoked_at = CURRENT_TIMESTAMP
+                FROM users u
+                WHERE u.id = upa.user_id
+                  AND u.telegram_id = %s
+                  AND upa.policy_version = %s
+                  AND upa.privacy_notice_version = %s
+                  AND upa.revoked_at IS NULL
+                """,
+                (
+                    telegram_id,
+                    versions.policy_version,
+                    versions.privacy_notice_version,
+                ),
             )
             conn.commit()
             return True
+    except psycopg.Error:
+        conn.rollback()
+        return False
     finally:
         conn.close()
 
@@ -224,7 +326,6 @@ def create_invite_token(
 
 def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
     """Redeem a single-use invite token and link it to the Telegram user."""
-    token_hash = hash_invite_token(raw_token)
     conn = conect_db()
     if not conn:
         return InviteRedemption("db_error")
@@ -244,14 +345,19 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
 
             cursor.execute(
                 """
-                SELECT id, role, expires_at, used_at
+                SELECT id, token_hash, role, expires_at, used_at
                 FROM invite_tokens
-                WHERE token_hash = %s
                 FOR UPDATE
                 """,
-                (token_hash,),
             )
-            invite = cursor.fetchone()
+            invite = next(
+                (
+                    row
+                    for row in cursor.fetchall()
+                    if verify_invite_token(raw_token, row["token_hash"])
+                ),
+                None,
+            )
             if not invite:
                 return InviteRedemption("invalid")
 

@@ -20,3 +20,22 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
 
 CREATE INDEX IF NOT EXISTS ix_invite_tokens_token_hash
 ON invite_tokens (token_hash);
+
+CREATE TABLE IF NOT EXISTS user_policy_acceptances (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    policy_version VARCHAR(32) NOT NULL,
+    privacy_notice_version VARCHAR(32) NOT NULL,
+    accepted_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ NULL,
+    source VARCHAR(32) NOT NULL,
+    analytics_consent_accepted_at TIMESTAMPTZ NULL,
+    analytics_consent_revoked_at TIMESTAMPTZ NULL,
+    training_consent_accepted_at TIMESTAMPTZ NULL,
+    training_consent_revoked_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, policy_version, privacy_notice_version, source)
+);
+
+CREATE INDEX IF NOT EXISTS ix_user_policy_acceptances_user_version
+ON user_policy_acceptances (user_id, policy_version, privacy_notice_version);

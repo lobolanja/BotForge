@@ -1,13 +1,13 @@
 # BotForge
 
 BotForge is a Docker-first Telegram chatbot stack. The Python bot receives
-Telegram messages, checks login state in PostgreSQL, and sends normal text messages
-to a local Ollama model.
+Telegram messages, checks invite authentication state in PostgreSQL, and sends
+normal text messages to a local Ollama model.
 
 The stack runs as separate containers:
 
 - `botforge`: Python Telegram bot process
-- `postgres`: database for users and Telegram login state
+- `postgres`: database for users, invite tokens, and policy acceptance
 - `ollama`: local LLM server
 - `ollama-pull`: one-shot container that downloads the configured Ollama model
 
@@ -33,7 +33,7 @@ Telegram Bot API
     |
     v
 botforge container
-    |-- postgres container: users, invite tokens, telegram_id login state
+    |-- postgres container: users, invite tokens, policy acceptance
     `-- ollama container: local model responses with the active profile model
 ```
 
@@ -75,8 +75,6 @@ OLLAMA_MODEL=gemma2:2b
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
-
-ENABLE_LEGACY_LOGIN=false
 ```
 
 Notes:
@@ -94,9 +92,6 @@ Notes:
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
-- `ENABLE_LEGACY_LOGIN` is disabled by default. Set it to `true` only when you
-  need to register `/login <username> <password>` for local development or a
-  private fork.
 - Do not commit `.env`.
 
 ## Bot Profiles And Prompt Configuration
@@ -236,7 +231,7 @@ The initial migration creates the `users` table with:
 Later migrations add invite-token authentication:
 
 - `users.role`
-- `invite_tokens.token_hash`
+- `invite_tokens.token_hash` stores a bcrypt hash, not the raw token
 - `invite_tokens.role`
 - `invite_tokens.expires_at`
 - `invite_tokens.used_at`
@@ -258,10 +253,21 @@ Generate a beta invite link from the BotForge image, replacing
 docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.invite_link)"
 ```
 
-Only the hash is stored in PostgreSQL. Send the printed link to the user who
-should join the beta. When the user opens it, Telegram sends `/start <token>` to
-the bot automatically. The token is single-use and expires after the selected
-TTL.
+Only a bcrypt hash of the token is stored in PostgreSQL. Send the printed link
+to the user who should join the beta. When the user opens it, Telegram sends
+`/start <token>` to the bot automatically. The token is single-use and expires
+after the selected TTL.
+
+After invite authentication, BotForge shows the required usage policy summary.
+Users must accept the current policy with `/accept_policy` before protected
+commands or AI chat run. They can read the current notice again with `/policy`
+or decline with `/decline_policy`.
+
+Policy acceptance is stored in `user_policy_acceptances` with the user id,
+policy version, privacy notice version, timestamp, and source. Change
+`BOT_POLICY_VERSION` or `BOT_PRIVACY_NOTICE_VERSION` to require users to accept
+the new version. Optional analytics or training consent is separate and defaults
+to disabled.
 
 If the `t.me` preview page opens but does not pass the token after pressing
 Start Bot, generate a direct Telegram app URI instead:
@@ -273,33 +279,8 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-For emergency local development only, you can still create a password-backed
-legacy user manually. First set this in `.env` and restart the bot:
-
-```env
-ENABLE_LEGACY_LOGIN=true
-```
-
-Then generate a bcrypt password hash:
-
-```bash
-docker compose run --rm --no-deps botforge python - <<'PY'
-import bcrypt
-
-password = b"<bot_user_plain_password>"
-print(bcrypt.hashpw(password, bcrypt.gensalt()).decode())
-PY
-```
-
-Then insert the user in PostgreSQL, replacing the hash value:
-
-```sql
-INSERT INTO users (username, password)
-VALUES ('<bot_user>', '<generated_bcrypt_hash>');
-```
-
-To create the first local admin user during development, set the `role` column
-to `admin`:
+To create the first local admin user during development, redeem an invite and
+then set the linked user's `role` column to `admin`:
 
 ```sql
 UPDATE users
@@ -452,8 +433,6 @@ python -m radon cc src tests -s -a
 
 - Invite generation is currently an operator action. Admin Telegram commands for
   issuing invites are tracked separately.
-- `/login` is hidden by default. Set `ENABLE_LEGACY_LOGIN=true` to register it
-  as a deprecated local-development fallback for password-backed users.
 - The default AI profile uses `gemma2:2b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
