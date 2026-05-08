@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from forge_bot.database import logout_user, redeem_invite_token, status_user
 
 from .auth_guard import require_login
+from .policy import policy_prompt
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -28,9 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     redemption = redeem_invite_token(args[0], update.effective_user.id)
     if redemption.status == "success":
-        await update.message.reply_text(
-            "Invite accepted. You can now chat with BotForge."
-        )
+        await update.message.reply_text(f"Invite accepted.\n\n{policy_prompt()}")
     elif redemption.status == "already_linked":
         await update.message.reply_text("This Telegram account is already linked.")
     elif redemption.status == "expired":

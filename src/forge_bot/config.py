@@ -11,6 +11,8 @@ DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma2:2b"
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
+DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
+DEFAULT_BOT_PRIVACY_NOTICE_VERSION = "2026-05-08"
 
 
 class SettingsError(RuntimeError):
@@ -125,6 +127,11 @@ class Settings(DatabaseSettings):
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     bot_profile: str = DEFAULT_BOT_PROFILE
     bot_profiles_dir: str = DEFAULT_BOT_PROFILES_DIR
+    bot_policy_version: str = DEFAULT_BOT_POLICY_VERSION
+    bot_privacy_notice_version: str = DEFAULT_BOT_PRIVACY_NOTICE_VERSION
+    bot_policy_url: str = ""
+    analytics_consent_enabled: bool = False
+    training_consent_enabled: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
@@ -168,6 +175,20 @@ class Settings(DatabaseSettings):
             bot_profiles_dir=(
                 _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
             ),
+            bot_policy_version=(
+                _clean(env.get("BOT_POLICY_VERSION")) or DEFAULT_BOT_POLICY_VERSION
+            ),
+            bot_privacy_notice_version=(
+                _clean(env.get("BOT_PRIVACY_NOTICE_VERSION"))
+                or DEFAULT_BOT_PRIVACY_NOTICE_VERSION
+            ),
+            bot_policy_url=_clean(env.get("BOT_POLICY_URL")) or "",
+            analytics_consent_enabled=_parse_bool(
+                env.get("BOT_ANALYTICS_CONSENT_ENABLED")
+            ),
+            training_consent_enabled=_parse_bool(
+                env.get("BOT_TRAINING_CONSENT_ENABLED")
+            ),
         )
 
 
@@ -193,6 +214,14 @@ def _parse_db_port(value: str | None) -> int:
     if not 1 <= port <= 65535:
         raise SettingsError("DB_PORT must be between 1 and 65535.")
     return port
+
+
+def _parse_bool(value: str | None) -> bool:
+    """Parse an optional boolean setting that defaults to false."""
+    cleaned = _clean(value)
+    if cleaned is None:
+        return False
+    return cleaned.lower() in {"1", "true", "yes", "on"}
 
 
 @lru_cache

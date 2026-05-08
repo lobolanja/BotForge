@@ -14,8 +14,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/translate - Translate text to another language\n"
         "/time - Show the current time\n"
         "/help - Show the available commands\n"
-        "/login [password] - Log in to the system\n"
         "/logout - Log out of the system\n"
         "/status - Check your login status\n"
+        "/policy - Show the usage policy\n"
+        "/accept_policy - Accept the current usage policy\n"
+        "/decline_policy - Decline the current usage policy\n"
     )
     await update.message.reply_text(help_text)
