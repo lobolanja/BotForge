@@ -1,7 +1,7 @@
 """create invite token authentication tables
 
-Revision ID: 20260507_0002
-Revises: 20260505_0001
+Revision ID: 20260507_0003
+Revises: 20260507_0002
 Create Date: 2026-05-07
 """
 
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "20260507_0002"
-down_revision: str | Sequence[str] | None = "20260505_0001"
+revision: str = "20260507_0003"
+down_revision: str | Sequence[str] | None = "20260507_0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -50,6 +50,5 @@ def downgrade() -> None:
     """Remove invite-token auth schema."""
     op.execute("DROP INDEX IF EXISTS ix_invite_tokens_token_hash")
     op.execute("DROP TABLE IF EXISTS invite_tokens")
-    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS role")
     op.execute("UPDATE users SET password = '' WHERE password IS NULL")
     op.execute("ALTER TABLE users ALTER COLUMN password SET NOT NULL")
