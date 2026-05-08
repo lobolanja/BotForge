@@ -1,13 +1,12 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from forge_bot.database import login_user, logout_user, status_user
+from forge_bot.database import logout_user, redeem_invite_token, status_user
 
 from .auth_guard import require_login
 
 
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Link the Telegram account to an existing database user after password check.
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return
 
@@ -21,15 +20,29 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     args = context.args or []
-    if len(args) < 2:
-        await update.message.reply_text("Usage: '/login username password'")
+    if not args:
+        await update.message.reply_text(
+            "Welcome to BotForge. Open your invite link to authenticate."
+        )
         return
 
-    username, password = args[0], args[1]
-    if login_user(username, password, update.effective_user.id):
-        await update.message.reply_text(f"Welcome {username}! You have logged in.")
+    redemption = redeem_invite_token(args[0], update.effective_user.id)
+    if redemption.status == "success":
+        await update.message.reply_text(
+            "Invite accepted. You can now chat with BotForge."
+        )
+    elif redemption.status == "already_linked":
+        await update.message.reply_text("This Telegram account is already linked.")
+    elif redemption.status == "expired":
+        await update.message.reply_text("This invite link has expired.")
+    elif redemption.status == "used":
+        await update.message.reply_text("This invite link has already been used.")
+    elif redemption.status == "invalid":
+        await update.message.reply_text("This invite link is invalid.")
     else:
-        await update.message.reply_text("Invalid username or password.")
+        await update.message.reply_text(
+            "Invite authentication is temporarily unavailable."
+        )
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

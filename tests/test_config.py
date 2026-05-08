@@ -4,6 +4,7 @@ from forge_bot.config import (
     DEFAULT_BOT_PROFILE,
     DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_DB_PORT,
+    DEFAULT_ENABLE_LEGACY_LOGIN,
     DEFAULT_OLLAMA_MODEL,
     DatabaseSettings,
     Settings,

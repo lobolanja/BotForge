@@ -20,8 +20,7 @@ def require_login(func: Handler) -> Handler:
         user_id = update.effective_user.id
         if not verify_user(user_id):
             await update.message.reply_text(
-                "Access denied. Please log in using /login [password] "
-                "to use this command."
+                "Access denied. Open your Telegram invite link to authenticate."
             )
             return
 
