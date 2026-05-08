@@ -112,4 +112,3 @@ async def test_start_reports_used_invite(monkeypatch) -> None:
     await start(update, SimpleNamespace(args=["raw-token"]))
 
     assert update.message.messages == ["This invite link has already been used."]
-
