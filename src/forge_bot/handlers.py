@@ -1,6 +1,7 @@
 from .commands import (
     greet,
     help_command,
+    invite,
     logout,
     ping,
     require_login,
@@ -18,6 +19,7 @@ __all__ = [
     "decline_policy",
     "greet",
     "help_command",
+    "invite",
     "logout",
     "ping",
     "policy",
