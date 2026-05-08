@@ -13,6 +13,7 @@ DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
 DEFAULT_BOT_PRIVACY_NOTICE_VERSION = "2026-05-08"
+DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
 
 
 class SettingsError(RuntimeError):
@@ -130,6 +131,7 @@ class Settings(DatabaseSettings):
     bot_policy_version: str = DEFAULT_BOT_POLICY_VERSION
     bot_privacy_notice_version: str = DEFAULT_BOT_PRIVACY_NOTICE_VERSION
     bot_policy_url: str = ""
+    invite_token_ttl_hours: int = DEFAULT_INVITE_TOKEN_TTL_HOURS
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
 
@@ -183,6 +185,10 @@ class Settings(DatabaseSettings):
                 or DEFAULT_BOT_PRIVACY_NOTICE_VERSION
             ),
             bot_policy_url=_clean(env.get("BOT_POLICY_URL")) or "",
+            invite_token_ttl_hours=_parse_positive_int(
+                env.get("INVITE_TOKEN_TTL_HOURS"),
+                DEFAULT_INVITE_TOKEN_TTL_HOURS,
+            ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")
             ),
@@ -214,6 +220,31 @@ def _parse_db_port(value: str | None) -> int:
     if not 1 <= port <= 65535:
         raise SettingsError("DB_PORT must be between 1 and 65535.")
     return port
+
+
+def _parse_positive_int(value: str | None, default: int) -> int:
+    """Parse and validate a positive integer setting.
+
+    Args:
+        value: Raw value read from the environment.
+        default: Default value when no value is provided.
+
+    Returns:
+        The parsed positive integer, or the default.
+
+    Raises:
+        SettingsError: If the value is not a positive integer.
+    """
+    cleaned = _clean(value)
+    if cleaned is None:
+        return default
+    try:
+        result = int(cleaned)
+    except ValueError as exc:
+        raise SettingsError(f"Value must be an integer: {value}") from exc
+    if result <= 0:
+        raise SettingsError(f"Value must be positive: {value}")
+    return result
 
 
 def _parse_bool(value: str | None) -> bool:

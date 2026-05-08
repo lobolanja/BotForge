@@ -271,11 +271,13 @@ def decline_current_policy(telegram_id: int) -> bool:
 def create_invite_token(
     role: str = "user",
     *,
-    ttl_hours: int = DEFAULT_INVITE_TOKEN_TTL_HOURS,
+    ttl_hours: int | None = None,
     created_by_user_id: int | None = None,
     bot_username: str | None = None,
 ) -> InviteToken | None:
     """Create a single-use invite token and store only its hash."""
+    if ttl_hours is None:
+        ttl_hours = get_settings().invite_token_ttl_hours
     normalized_role = role.lower()
     if normalized_role not in VALID_INVITE_ROLES:
         raise ValueError(f"Unsupported invite role: {role}")

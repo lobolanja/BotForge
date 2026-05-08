@@ -5,6 +5,7 @@ from .bot_profile import BotProfileError, load_active_bot_profile
 from .commands import (
     greet,
     help_command,
+    invite,
     logout,
     ping,
     start,
@@ -49,6 +50,7 @@ def main() -> None:
     bot.add_handler(CommandHandler("policy", policy))
     bot.add_handler(CommandHandler("accept_policy", accept_policy))
     bot.add_handler(CommandHandler("decline_policy", decline_policy))
+    bot.add_handler(CommandHandler("invite", invite))
 
     # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))

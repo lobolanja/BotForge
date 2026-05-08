@@ -279,6 +279,52 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
+## 5. Admin Invite Management
+
+After becoming an admin, use the `/invite` command to generate invite links without direct database access:
+
+```text
+/invite <role>
+```
+
+**Usage:**
+
+```text
+/invite user
+```
+
+**Response:**
+
+```text
+✅ Invite link created!
+
+Invite link:
+https://t.me/my_bot?start=abcd1234...
+
+Role: user
+Expires: 2026-05-09 12:00:00 UTC
+```
+
+**Available roles:**
+
+- `user` — Standard user role (default)
+- `professional` — Reserved for future use; returns "not available"
+
+**Requirements:**
+
+- Only admins can use `/invite`
+- Generated tokens are single-use and expire after `INVITE_TOKEN_TTL_HOURS` (default: 24 hours)
+- Tokens are auditable: stored with `created_by_user_id` and `created_at` timestamps
+- Each token can only be redeemed once (marked with `used_at` and `used_by_user_id`)
+
+**Configuration:**
+
+Set the invite token TTL via environment variable:
+
+```bash
+INVITE_TOKEN_TTL_HOURS=7  # Token expires after 7 days instead of 24 hours
+```
+
 To create the first local admin user during development, redeem an invite and
 then set the linked user's `role` column to `admin`:
 
