@@ -1,10 +1,11 @@
 import pytest
 
 from forge_bot.config import (
+    DEFAULT_BOT_POLICY_VERSION,
+    DEFAULT_BOT_PRIVACY_NOTICE_VERSION,
     DEFAULT_BOT_PROFILE,
     DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_DB_PORT,
-    DEFAULT_ENABLE_LEGACY_LOGIN,
     DEFAULT_OLLAMA_MODEL,
     DatabaseSettings,
     Settings,
@@ -54,3 +55,7 @@ def test_defaults_are_applied() -> None:
     assert settings.ollama_model == DEFAULT_OLLAMA_MODEL
     assert settings.bot_profile == DEFAULT_BOT_PROFILE
     assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR
+    assert settings.bot_policy_version == DEFAULT_BOT_POLICY_VERSION
+    assert settings.bot_privacy_notice_version == DEFAULT_BOT_PRIVACY_NOTICE_VERSION
+    assert not settings.analytics_consent_enabled
+    assert not settings.training_consent_enabled
