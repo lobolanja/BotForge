@@ -5,6 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from .config import get_settings
+from .roles import is_admin_role
 
 
 def verify_password(password: str, hash_db: str) -> bool:
@@ -48,6 +49,37 @@ def verify_user(telegram_id: int) -> bool:
             return cursor.fetchone() is not None
     finally:
         conn.close()
+
+
+def get_user_by_telegram_id(telegram_id: int) -> dict[str, Any] | None:
+    """Return the authenticated user linked to a Telegram ID, if any."""
+    conn = conect_db()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, username, role FROM users WHERE telegram_id = %s",
+                (telegram_id,),
+            )
+            user: dict[str, Any] | None = cursor.fetchone()
+            return user
+    finally:
+        conn.close()
+
+
+def get_user_role_by_telegram_id(telegram_id: int) -> str | None:
+    """Return the stored role for a logged-in Telegram user."""
+    user = get_user_by_telegram_id(telegram_id)
+    if not user:
+        return None
+    role = user.get("role")
+    return role if isinstance(role, str) else None
+
+
+def is_admin(telegram_id: int) -> bool:
+    """Check whether the logged-in Telegram user has the admin role."""
+    return is_admin_role(get_user_role_by_telegram_id(telegram_id))
 
 
 def login_user(username: str, password: str, telegram_id: int) -> bool:
@@ -95,14 +127,14 @@ def logout_user(telegram_id: int) -> bool:
 
 
 def status_user(telegram_id: int) -> dict[str, Any] | None:
-    """Return the logged-in username for a Telegram ID, if one exists."""
+    """Return the logged-in username and role for a Telegram ID, if one exists."""
     conn = conect_db()
     if not conn:
         return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT username FROM users WHERE telegram_id = %s",
+                "SELECT username, role FROM users WHERE telegram_id = %s",
                 (telegram_id,),
             )
             user: dict[str, Any] | None = cursor.fetchone()

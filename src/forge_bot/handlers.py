@@ -1,4 +1,5 @@
 from .commands import (
+    admin_required,
     greet,
     help_command,
     login,
@@ -19,6 +20,7 @@ __all__ = [
     "logout",
     "ping",
     "require_login",
+    "admin_required",
     "status",
     "time",
     "translate",

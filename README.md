@@ -254,6 +254,19 @@ INSERT INTO users (username, password)
 VALUES ('<bot_user>', '<generated_bcrypt_hash>');
 ```
 
+To create the first local admin user during development, set the `role` column
+to `admin`:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE username = '<bot_user>';
+```
+
+Supported roles are `admin`, `professional`, and `user`. New users default to
+`user`; `professional` is reserved for future behavior and does not grant admin
+permissions.
+
 Exit PostgreSQL:
 
 ```sql
