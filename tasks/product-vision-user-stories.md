@@ -112,6 +112,7 @@ They want:
 - Generate invite links.
 - Control who can access the bot.
 - Assign roles.
+- Track user email addresses for future web UI and support workflows.
 - See basic operational state.
 
 ## Bot Owner
@@ -188,11 +189,12 @@ Acceptance criteria:
 
 - Only admins can generate invite links.
 - Generated links use Telegram's `/start <token>` flow.
+- The admin provides both target role and user email when creating an invite.
 - Invite tokens are single-use.
 - Invite tokens expire.
 - Raw tokens are not stored in the database.
-- For the first beta, invites can be role-based rather than tied to an email
-  address.
+- The invite stores the intended user's email for future web UI, support, and
+  audit workflows.
 
 ### Story 2.2: User Joins With A Telegram Invite Link
 
@@ -205,7 +207,8 @@ Acceptance criteria:
 - Opening the link sends `/start <token>` to the bot.
 - The bot validates the token.
 - The user receives a clear success message.
-- The user's Telegram ID is linked to an internal user record.
+- The user's Telegram ID is linked to an internal user record with the invite
+  email.
 - The user does not need a separate `/login` or `/logout` step after invite
   redemption.
 
@@ -362,8 +365,9 @@ Acceptance criteria:
 
 - `/start` without token explains that an invite is required.
 - `/start <valid_token>` registers the user.
-- `/help` explains available commands, including invite onboarding, policy
-  commands, and any available privacy/data controls.
+- `/help` is role-aware.
+- Admin users see admin commands such as `/invite <role> <email>`.
+- Non-admin users see only user-facing commands.
 
 ### Story 6.2: Friendly Slow Response Handling
 

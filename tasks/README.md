@@ -63,7 +63,9 @@ Why this order:
   Telegram identity binding, not as a short-lived login/logout session.
 - Users should accept the current usage policy before using protected bot
   functionality.
-- Admin invite commands come after the invite model exists.
+- Admin invite commands come after the invite model exists. Invite creation
+  should collect both target role and user email so future web UI, support, and
+  audit workflows have a stable user attribute.
 - Campaign invites build on normal invite handling and admin permissions.
 
 ## Phase 3: Reliable Runtime
@@ -137,6 +139,8 @@ upload is a required product promise.
 - Do not add user-facing login/logout concepts unless there is a concrete
   session-management requirement. Privacy and account-control work should use
   explicit data-removal commands or documented deletion request flows.
+- Make command discovery role-aware: admins should see admin commands in `/help`;
+  normal users should see only user-facing commands.
 - Run the Docker stack before and after auth/database changes.
 - Add tests whenever an issue changes auth, roles, database access, or message
   routing behavior.
