@@ -81,6 +81,8 @@ rewriting authentication, memory, database, or Telegram handling.
 - The bot should not mix memory between users.
 - Domain-specific behavior should be configured, not hardcoded into the core.
 - Users should understand and accept the usage policy before protected use.
+- Invite authentication should be treated as a Telegram identity binding, not as
+  a password-style login/logout session.
 - User data should have clear retention, deletion, and privacy boundaries.
 - The system should have basic abuse prevention before wider beta access.
 - The system should be safe enough for beta before adding advanced features.
@@ -98,6 +100,7 @@ They want:
 - Clear messages.
 - A bot that remembers recent context.
 - Privacy.
+- A clear way to remove or request deletion of stored data.
 - Useful responses.
 
 ## Admin
@@ -188,6 +191,8 @@ Acceptance criteria:
 - Invite tokens are single-use.
 - Invite tokens expire.
 - Raw tokens are not stored in the database.
+- For the first beta, invites can be role-based rather than tied to an email
+  address.
 
 ### Story 2.2: User Joins With A Telegram Invite Link
 
@@ -201,6 +206,8 @@ Acceptance criteria:
 - The bot validates the token.
 - The user receives a clear success message.
 - The user's Telegram ID is linked to an internal user record.
+- The user does not need a separate `/login` or `/logout` step after invite
+  redemption.
 
 ### Story 2.3: Invalid Invite Gives A Clear Message
 
@@ -355,7 +362,8 @@ Acceptance criteria:
 
 - `/start` without token explains that an invite is required.
 - `/start <valid_token>` registers the user.
-- `/help` explains available commands.
+- `/help` explains available commands, including invite onboarding, policy
+  commands, and any available privacy/data controls.
 
 ### Story 6.2: Friendly Slow Response Handling
 
@@ -420,6 +428,10 @@ Acceptance criteria:
 - `/memory_clear` deletes only personalization memory for the current user.
 - Broader deletion is supported through `/delete_my_data` or a documented beta
   request flow.
+- The deletion or beta request flow can remove the Telegram identity link when a
+  user wants to stop using the bot.
+- Users are not expected to use `/logout` as the main privacy or account-control
+  mechanism in the invite-based model.
 - Deleted user data is not used in future prompts or analytics exports.
 
 ## Epic 9: Abuse Prevention And Operational Readiness

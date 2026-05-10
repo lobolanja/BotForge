@@ -59,7 +59,8 @@ Why this order:
 Why this order:
 
 - Roles are the base for admin-only behavior.
-- Invite authentication replaces password login.
+- Invite authentication replaces password login. Treat a redeemed invite as a
+  Telegram identity binding, not as a short-lived login/logout session.
 - Users should accept the current usage policy before using protected bot
   functionality.
 - Admin invite commands come after the invite model exists.
@@ -133,6 +134,9 @@ upload is a required product promise.
 
 - Keep changes small and scoped to the issue you are working on.
 - Do not store or log Telegram tokens, invite tokens, or user passwords.
+- Do not add user-facing login/logout concepts unless there is a concrete
+  session-management requirement. Privacy and account-control work should use
+  explicit data-removal commands or documented deletion request flows.
 - Run the Docker stack before and after auth/database changes.
 - Add tests whenever an issue changes auth, roles, database access, or message
   routing behavior.
