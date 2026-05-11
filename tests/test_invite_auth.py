@@ -1,10 +1,9 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from forge_bot.database import logout_user, redeem_invite_token, status_user
-
 from forge_bot.commands.auth_guard import require_login
 from forge_bot.commands.policy import policy_prompt
+from forge_bot.database import logout_user, redeem_invite_token, status_user
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
