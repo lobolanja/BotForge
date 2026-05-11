@@ -26,8 +26,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     if admin:
         help_text += (
-            "\n"
-            "Comandos de administrador:\n"
-            "/invite - Generar un enlace de invitación\n"
+            "\nComandos de administrador:\n/invite - Generar un enlace de invitación\n"
         )
     await update.message.reply_text(help_text)
