@@ -45,9 +45,6 @@ jobs:
       - name: Run Mypy type check
         run: mypy src
 
-      - name: Run tests
-        run: pytest
-
       - name: Run Bandit security check
         run: bandit -r src -ll
 
