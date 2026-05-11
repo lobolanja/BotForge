@@ -1,4 +1,4 @@
-from .auth import start, status, require_login
+from .auth import require_login, start, status
 from .greet import greet
 from .help import help_command
 from .invite import invite
