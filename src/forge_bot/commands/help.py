@@ -25,5 +25,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/decline_policy - Rechazar la política de uso\n"
     )
     if admin:
-        help_text += "/invite - Generar un enlace de invitación (admin)\n"
+        help_text += (
+            "\n"
+            "Comandos de administrador:\n"
+            "/invite - Generar un enlace de invitación\n"
+        )
     await update.message.reply_text(help_text)

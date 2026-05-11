@@ -11,21 +11,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return
 
-    current_user = status_user(update.effective_user.id)
-    if current_user:
-        await update.message.reply_text(
-            "You are already logged in as "
-            f"{current_user['username']}. Use /logout before logging in with "
-            "another account."
-        )
-        return
-
     args = context.args or []
-    if not args:
-        await update.message.reply_text(
-            "Welcome to BotForge. Open your invite link to authenticate."
-        )
-        return
+
+    await update.message.reply_text(
+        "Welcome to BotForge. Open your invite link to authenticate."
+    )
 
     redemption = redeem_invite_token(args[0], update.effective_user.id)
     if redemption.status == "success":
