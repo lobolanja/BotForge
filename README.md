@@ -462,7 +462,9 @@ Run locally:
 python -m forge_bot.main
 ```
 
-Run checks after installing development dependencies:
+Run checks after installing development dependencies.
+
+Code quality checks (CI: `lint.yml`):
 
 ```bash
 python -m ruff format --check src tests
@@ -470,9 +472,14 @@ python -m ruff check src tests
 python -m black --check src tests
 python -m isort --check-only src tests
 python -m mypy src
-python -m pytest
 python -m bandit -r src -ll
 python -m radon cc src tests -s -a
+```
+
+Tests (CI: `tests.yml`):
+
+```bash
+python -m pytest
 ```
 
 ## Current Limitations
