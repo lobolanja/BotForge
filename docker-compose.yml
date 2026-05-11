@@ -40,10 +40,16 @@ services:
       - botforge
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:rocm
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -53,11 +59,11 @@ services:
       - botforge
 
   ollama-pull:
-    image: ollama/ollama:latest
+    image: ollama/ollama:rocm
     restart: "no"
     environment:
       OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "${OLLAMA_MODEL:-gemma2:2b}"]
+    command: ["pull", "${OLLAMA_MODEL:-gemma3:2b}"]
     depends_on:
       ollama:
         condition: service_healthy

@@ -1,7 +1,6 @@
 from .commands import (
     greet,
     help_command,
-    logout,
     ping,
     status,
     time,
@@ -14,7 +13,6 @@ from .router import ask_ia
 __all__ = [
     "ask_ia",
     "greet",
-    "logout",
     "status",
     "help_command",
     "unknown_command",

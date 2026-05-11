@@ -6,7 +6,6 @@ from .commands import (
     greet,
     help_command,
     invite,
-    logout,
     ping,
     start,
     status,
@@ -46,7 +45,6 @@ def main() -> None:
     bot.add_handler(CommandHandler("translate", translate))
     bot.add_handler(CommandHandler("time", time))
     bot.add_handler(CommandHandler("status", status))
-    bot.add_handler(CommandHandler("logout", logout))
     bot.add_handler(CommandHandler("policy", policy))
     bot.add_handler(CommandHandler("accept_policy", accept_policy))
     bot.add_handler(CommandHandler("decline_policy", decline_policy))

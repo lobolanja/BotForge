@@ -11,7 +11,7 @@
   "disclaimer_text": "This assistant is a development profile and may need review before production use.",
   "default_language": "en",
   "llm_provider": "ollama",
-  "llm_model": "gemma2:2b",
+  "llm_model": "gemma4:e2b",
   "memory_enabled": false,
   "analytics_enabled": false
 }
