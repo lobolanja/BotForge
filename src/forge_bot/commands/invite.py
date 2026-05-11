@@ -49,7 +49,7 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if requested_role not in VALID_INVITE_ROLES:
         roles_list = ", ".join(sorted(VALID_INVITE_ROLES - {"professional"}))
         await update.message.reply_text(
-            f"Invalid role '{requested_role}'.\n\n" f"Available roles: {roles_list}."
+            f"Invalid role '{requested_role}'.\n\nAvailable roles: {roles_list}."
         )
         return
 
