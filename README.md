@@ -1,7 +1,7 @@
 # BotForge
 
 BotForge is a Docker-first Telegram chatbot stack. The Python bot receives
-Telegram messages, checks invite authentication state in PostgreSQL, and sends
+Telegram messages, checks invite-linked identity state in PostgreSQL, and sends
 normal text messages to a local Ollama model.
 
 The stack runs as separate containers:
@@ -228,7 +228,7 @@ The initial migration creates the `users` table with:
 - `telegram_id`
 - `created_at`
 
-Later migrations add invite-token authentication:
+Later migrations add invite-token identity linking:
 
 - `users.role`
 - `invite_tokens.token_hash` stores a bcrypt hash, not the raw token
@@ -240,17 +240,18 @@ Later migrations add invite-token authentication:
 
 ## 4. Create The First Invite Link
 
-BotForge authenticates Telegram users through invite links:
+BotForge links Telegram users to invited email identities through invite links:
 
 ```text
 https://t.me/<bot_username>?start=<invite_token>
 ```
 
 Generate a beta invite link from the BotForge image, replacing
-`<bot_username>` with the bot username from BotFather:
+`<bot_username>` with the bot username from BotFather and `<email>` with the
+recipient email:
 
 ```powershell
-docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.invite_link)"
+docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', email='<email>', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.invite_link)"
 ```
 
 Only a bcrypt hash of the token is stored in PostgreSQL. Send the printed link
@@ -258,7 +259,7 @@ to the user who should join the beta. When the user opens it, Telegram sends
 `/start <token>` to the bot automatically. The token is single-use and expires
 after the selected TTL.
 
-After invite authentication, BotForge shows the required usage policy summary.
+After invite redemption, BotForge shows the required usage policy summary.
 Users must accept the current policy with `/accept_policy` before protected
 commands or AI chat run. They can read the current notice again with `/policy`
 or decline with `/decline_policy`.
@@ -273,7 +274,7 @@ If the `t.me` preview page opens but does not pass the token after pressing
 Start Bot, generate a direct Telegram app URI instead:
 
 ```powershell
-docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.app_link)"
+docker compose run --rm --no-deps botforge python -c "from forge_bot.database import create_invite_token; invite = create_invite_token(role='user', email='<email>', ttl_hours=24, bot_username='<bot_username>'); assert invite is not None; print(invite.app_link)"
 ```
 
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
@@ -284,35 +285,38 @@ avoids the browser preview page.
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
 ```text
-/invite <role>
+/invite <role> <email>
 ```
 
 **Usage:**
 
 ```text
-/invite user
+/invite user person@example.com
 ```
 
 **Response:**
 
 ```text
-✅ Invite link created!
+Invite link created!
 
 Invite link:
 https://t.me/my_bot?start=abcd1234...
 
 Role: user
+Email: person@example.com
 Expires: 2026-05-09 12:00:00 UTC
 ```
 
 **Available roles:**
 
-- `user` — Standard user role (default)
-- `professional` — Reserved for future use; returns "not available"
+- `user` - Standard beta user role
+- `admin` - Admin role, including access to `/invite <role> <email>`
+- `professional` - Reserved for future use; returns "not available"
 
 **Requirements:**
 
 - Only admins can use `/invite`
+- Invites must include a valid email address
 - Generated tokens are single-use and expire after `INVITE_TOKEN_TTL_HOURS` (default: 24 hours)
 - Tokens are auditable: stored with `created_by_user_id` and `created_at` timestamps
 - Each token can only be redeemed once (marked with `used_at` and `used_by_user_id`)
@@ -484,8 +488,8 @@ python -m pytest
 
 ## Current Limitations
 
-- Invite generation is currently an operator action. Admin Telegram commands for
-  issuing invites are tracked separately.
+- Account privacy controls such as `/privacy`, `/memory_clear`, and
+  `/delete_my_data` are planned as explicit commands.
 - The default AI profile uses `gemma2:2b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
