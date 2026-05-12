@@ -36,7 +36,7 @@ def upgrade() -> None:
             id SERIAL PRIMARY KEY,
             token_hash VARCHAR(64) NOT NULL UNIQUE,
             role VARCHAR(32) NOT NULL DEFAULT 'user',
-            email VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NULL,
             expires_at TIMESTAMPTZ NOT NULL,
             used_at TIMESTAMPTZ NULL,
             used_by_user_id INTEGER NULL REFERENCES users(id),
