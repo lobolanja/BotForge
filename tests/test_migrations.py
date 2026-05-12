@@ -29,3 +29,5 @@ def test_invite_token_migration_follows_role_migration() -> None:
 
     assert 'revision: str = "20260507_0003"' in contents
     assert 'down_revision: str | Sequence[str] | None = "20260507_0002"' in contents
+    assert "ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL" in contents
+    assert "email VARCHAR(255) NOT NULL" in contents

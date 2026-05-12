@@ -8,8 +8,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not update.message or not update.effective_user:
         return
 
-    user_id = update.effective_user.id
-    admin = is_admin(user_id)
+    admin = is_admin(update.effective_user.id)
 
     help_text = (
         "Comandos disponibles:\n"
@@ -18,13 +17,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/translate - Traducir texto a otro idioma\n"
         "/time - Muestra la hora actual\n"
         "/help - Muestra los comandos disponibles\n"
-        "/status - Verifica tu autenticación\n"
-        "/policy - Muestra la política de uso\n"
-        "/accept_policy - Aceptar la política de uso\n"
-        "/decline_policy - Rechazar la política de uso\n"
+        "/status - Verifica tu identidad vinculada\n"
+        "/policy - Muestra la politica de uso\n"
+        "/accept_policy - Aceptar la politica de uso\n"
+        "/decline_policy - Rechazar la politica de uso\n"
     )
     if admin:
         help_text += (
-            "\nComandos de administrador:\n/invite - Generar un enlace de invitación\n"
+            "\nComandos de administrador:\n"
+            "/invite <role> <email> - Generar un enlace de invitacion\n"
         )
     await update.message.reply_text(help_text)
