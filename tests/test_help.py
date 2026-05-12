@@ -42,3 +42,6 @@ async def test_help_shows_admin_invite_shape(monkeypatch: pytest.MonkeyPatch) ->
     await help_command(update, SimpleNamespace())
 
     assert "/invite <role> <email>" in update.message.replies[0]
+    assert (
+        "/campaign_invite <role> <expires_at> <max_uses>" in update.message.replies[0]
+    )

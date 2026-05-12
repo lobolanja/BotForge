@@ -1,4 +1,5 @@
 from .commands.auth import status
+from .commands.campaign_invite import campaign_invite
 from .commands.greet import greet
 from .commands.help import help_command
 from .commands.ping import ping
@@ -10,6 +11,7 @@ from .router import ask_ia
 
 __all__ = [
     "ask_ia",
+    "campaign_invite",
     "greet",
     "status",
     "help_command",
