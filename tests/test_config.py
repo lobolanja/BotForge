@@ -5,6 +5,7 @@ from forge_bot.config import (
     DEFAULT_BOT_PRIVACY_NOTICE_VERSION,
     DEFAULT_BOT_PROFILE,
     DEFAULT_BOT_PROFILES_DIR,
+    DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
     DEFAULT_DB_PORT,
     DEFAULT_OLLAMA_MODEL,
     DatabaseSettings,
@@ -57,5 +58,8 @@ def test_defaults_are_applied() -> None:
     assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR
     assert settings.bot_policy_version == DEFAULT_BOT_POLICY_VERSION
     assert settings.bot_privacy_notice_version == DEFAULT_BOT_PRIVACY_NOTICE_VERSION
+    assert settings.campaign_invite_max_uses_limit == (
+        DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT
+    )
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled
