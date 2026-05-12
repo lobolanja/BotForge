@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "gemma2:2b"
+DEFAULT_OLLAMA_MODEL = "gemma3:4b"
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
