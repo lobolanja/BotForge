@@ -28,6 +28,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("This invite link has expired.")
     elif redemption.status == "used":
         await update.message.reply_text("This invite link has already been used.")
+    elif redemption.status == "campaign_full":
+        await update.message.reply_text("This campaign invite link is full.")
     elif redemption.status == "invalid":
         await update.message.reply_text("This invite link is invalid.")
     else:
@@ -42,9 +44,15 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     user = status_user(update.effective_user.id)
     if user:
+        email = user.get("email")
+        if email:
+            await update.message.reply_text(
+                f"Your Telegram identity is linked to {email} "
+                f"with role: {user['role']}."
+            )
+            return
         await update.message.reply_text(
-            f"Your Telegram identity is linked to {user['email']} "
-            f"with role: {user['role']}."
+            f"Your Telegram identity is linked with role: {user['role']}."
         )
     else:
         await update.message.reply_text("Your Telegram identity is not linked yet.")

@@ -30,4 +30,17 @@ def test_invite_token_migration_follows_role_migration() -> None:
     assert 'revision: str = "20260507_0003"' in contents
     assert 'down_revision: str | Sequence[str] | None = "20260507_0002"' in contents
     assert "ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL" in contents
-    assert "email VARCHAR(255) NOT NULL" in contents
+    assert "email VARCHAR(255) NULL" in contents
+
+
+def test_campaign_invite_migration_tracks_limited_reuse() -> None:
+    migration = Path("migrations/versions/20260512_0005_add_campaign_invites.py")
+    contents = migration.read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260512_0005"' in contents
+    assert 'down_revision: str | Sequence[str] | None = "20260508_0004"' in contents
+    assert "ALTER TABLE invite_tokens ALTER COLUMN email DROP NOT NULL" in contents
+    assert "token_type VARCHAR(32) NOT NULL DEFAULT 'single_use'" in contents
+    assert "max_uses INTEGER NOT NULL DEFAULT 1" in contents
+    assert "used_count INTEGER NOT NULL DEFAULT 0" in contents
+    assert "CREATE TABLE IF NOT EXISTS invite_token_redemptions" in contents

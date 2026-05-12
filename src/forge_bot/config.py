@@ -14,6 +14,7 @@ DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
 DEFAULT_BOT_PRIVACY_NOTICE_VERSION = "2026-05-08"
 DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
+DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT = 1000
 
 
 class SettingsError(RuntimeError):
@@ -132,6 +133,7 @@ class Settings(DatabaseSettings):
     bot_privacy_notice_version: str = DEFAULT_BOT_PRIVACY_NOTICE_VERSION
     bot_policy_url: str = ""
     invite_token_ttl_hours: int = DEFAULT_INVITE_TOKEN_TTL_HOURS
+    campaign_invite_max_uses_limit: int = DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
 
@@ -188,6 +190,10 @@ class Settings(DatabaseSettings):
             invite_token_ttl_hours=_parse_positive_int(
                 env.get("INVITE_TOKEN_TTL_HOURS"),
                 DEFAULT_INVITE_TOKEN_TTL_HOURS,
+            ),
+            campaign_invite_max_uses_limit=_parse_positive_int(
+                env.get("CAMPAIGN_INVITE_MAX_USES_LIMIT"),
+                DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
             ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")

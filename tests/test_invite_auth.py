@@ -89,6 +89,7 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
         ("invalid", "This invite link is invalid."),
         ("expired", "This invite link has expired."),
         ("used", "This invite link has already been used."),
+        ("campaign_full", "This campaign invite link is full."),
         ("db_error", "Invite identity connection is temporarily unavailable."),
     ],
 )
@@ -146,6 +147,27 @@ async def test_status_shows_identity_copy(monkeypatch: pytest.MonkeyPatch) -> No
     ]
     assert "logout" not in update.message.replies[0].lower()
     assert "logged in" not in update.message.replies[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_status_handles_campaign_identity_without_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = create_update()
+    monkeypatch.setattr(
+        "forge_bot.commands.auth.status_user",
+        lambda telegram_id: {
+            "username": "telegram_123_1",
+            "email": None,
+            "role": "user",
+        },
+    )
+
+    await status(update, create_context())
+
+    assert update.message.replies == [
+        "Your Telegram identity is linked with role: user."
+    ]
 
 
 @pytest.mark.asyncio

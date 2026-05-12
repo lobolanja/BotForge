@@ -321,12 +321,35 @@ Expires: 2026-05-09 12:00:00 UTC
 - Tokens are auditable: stored with `created_by_user_id` and `created_at` timestamps
 - Each token can only be redeemed once (marked with `used_at` and `used_by_user_id`)
 
+### Campaign Invite Links
+
+Admins can also create public campaign invite links for events or promotions:
+
+```text
+/campaign_invite <role> <expires_at> <max_uses>
+```
+
+Example:
+
+```text
+/campaign_invite user 2026-06-30 100
+```
+
+The bot returns one reusable link. It can be redeemed until the end of the
+expiration date in UTC or until the maximum use count is reached. Campaign
+invite tokens are stored as hashes, and each redemption is recorded in
+`invite_token_redemptions`.
+
+Campaign invites support `user` and `admin`. The `professional` role remains
+reserved and is rejected.
+
 **Configuration:**
 
 Set the invite token TTL via environment variable:
 
 ```bash
 INVITE_TOKEN_TTL_HOURS=7  # Token expires after 7 days instead of 24 hours
+CAMPAIGN_INVITE_MAX_USES_LIMIT=1000
 ```
 
 To create the first local admin user during development, redeem an invite and

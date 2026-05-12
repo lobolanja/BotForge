@@ -2,6 +2,7 @@ def test_command_modules_import() -> None:
     import forge_bot.commands.invite as invite_module
     from forge_bot.commands.auth import status
     from forge_bot.commands.auth_guard import admin_required
+    from forge_bot.commands.campaign_invite import campaign_invite
     from forge_bot.commands.greet import greet
     from forge_bot.commands.help import help_command
     from forge_bot.commands.ping import ping
@@ -14,6 +15,7 @@ def test_command_modules_import() -> None:
     assert callable(greet)
     assert callable(help_command)
     assert callable(admin_required)
+    assert callable(campaign_invite)
     assert callable(ping)
     assert callable(policy)
     assert callable(status)

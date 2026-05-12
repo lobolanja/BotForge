@@ -26,5 +26,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         help_text += (
             "\nComandos de administrador:\n"
             "/invite <role> <email> - Generar un enlace de invitacion\n"
+            "/campaign_invite <role> <expires_at> <max_uses> - "
+            "Generar un enlace de campana\n"
         )
     await update.message.reply_text(help_text)

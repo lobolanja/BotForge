@@ -2,6 +2,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from .bot_profile import BotProfileError, load_active_bot_profile
 from .commands.auth import start, status
+from .commands.campaign_invite import campaign_invite
 from .commands.greet import greet
 from .commands.help import help_command
 from .commands.invite import invite
@@ -42,6 +43,7 @@ def main() -> None:
     bot.add_handler(CommandHandler("accept_policy", accept_policy))
     bot.add_handler(CommandHandler("decline_policy", decline_policy))
     bot.add_handler(CommandHandler("invite", invite))
+    bot.add_handler(CommandHandler("campaign_invite", campaign_invite))
 
     # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
