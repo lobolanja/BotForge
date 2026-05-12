@@ -20,7 +20,8 @@ def require_login(func: Handler) -> Handler:
         user_id = update.effective_user.id
         if not verify_user(user_id):
             await update.message.reply_text(
-                "Access denied. Open your Telegram invite link to authenticate."
+                "Access denied. Open your Telegram invite link "
+                "to connect your identity."
             )
             return
         if not has_current_policy_acceptance(user_id):

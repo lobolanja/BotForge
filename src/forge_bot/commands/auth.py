@@ -1,9 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from forge_bot.database import logout_user, redeem_invite_token, status_user
+from forge_bot.database import redeem_invite_token, status_user
 
-from .auth_guard import require_login
 from .policy import policy_prompt
 
 
@@ -14,8 +13,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args or []
 
     await update.message.reply_text(
-        "Welcome to BotForge. Open your invite link to authenticate."
+        "Welcome to BotForge. Open your invite link to connect your identity."
     )
+
+    if not args:
+        return
 
     redemption = redeem_invite_token(args[0], update.effective_user.id)
     if redemption.status == "success":
@@ -30,7 +32,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("This invite link is invalid.")
     else:
         await update.message.reply_text(
-            "Invite authentication is temporarily unavailable."
+            "Invite identity connection is temporarily unavailable."
         )
 
 
@@ -41,19 +43,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = status_user(update.effective_user.id)
     if user:
         await update.message.reply_text(
-            f"You are logged in as: {user['username']}\nUse /logout to log out."
+            f"Your Telegram identity is linked to {user['email']} "
+            f"with role: {user['role']}."
         )
     else:
-        await update.message.reply_text("You are not logged in.")
-
-
-@require_login
-async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.effective_user:
-        return
-
-    # Keep logout idempotent from Telegram's perspective: report DB update success.
-    if logout_user(update.effective_user.id):
-        await update.message.reply_text("Session closed successfully.")
-    else:
-        await update.message.reply_text("Failed to close the session.")
+        await update.message.reply_text("Your Telegram identity is not linked yet.")

@@ -2,12 +2,12 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import engine
-from .commands import require_login
+from .commands.auth_guard import require_login
 
 
 @require_login
 async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Route authenticated plain-text Telegram messages to the AI engine."""
+    """Route identity-linked plain-text Telegram messages to the AI engine."""
     if not update.message or not update.effective_user or not update.effective_chat:
         return
 
