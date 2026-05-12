@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(255) NULL,
     password VARCHAR(255) NULL,
     telegram_id BIGINT NULL UNIQUE,
     role VARCHAR(32) NOT NULL DEFAULT 'user',
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
     id SERIAL PRIMARY KEY,
     token_hash VARCHAR(64) NOT NULL UNIQUE,
     role VARCHAR(32) NOT NULL DEFAULT 'user',
+    email VARCHAR(255) NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ NULL,
     used_by_user_id INTEGER NULL REFERENCES users(id),

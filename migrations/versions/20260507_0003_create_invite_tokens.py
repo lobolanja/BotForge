@@ -23,6 +23,12 @@ def upgrade() -> None:
         ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'user'
         """
     )
+    op.execute(
+        """
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL
+        """
+    )
     op.execute("ALTER TABLE users ALTER COLUMN password DROP NOT NULL")
     op.execute(
         """
@@ -30,12 +36,19 @@ def upgrade() -> None:
             id SERIAL PRIMARY KEY,
             token_hash VARCHAR(64) NOT NULL UNIQUE,
             role VARCHAR(32) NOT NULL DEFAULT 'user',
+            email VARCHAR(255) NOT NULL,
             expires_at TIMESTAMPTZ NOT NULL,
             used_at TIMESTAMPTZ NULL,
             used_by_user_id INTEGER NULL REFERENCES users(id),
             created_by_user_id INTEGER NULL REFERENCES users(id),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
+        """
+    )
+    op.execute(
+        """
+        ALTER TABLE invite_tokens
+        ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL
         """
     )
     op.execute(
@@ -52,3 +65,4 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS invite_tokens")
     op.execute("UPDATE users SET password = '' WHERE password IS NULL")
     op.execute("ALTER TABLE users ALTER COLUMN password SET NOT NULL")
+    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS email")

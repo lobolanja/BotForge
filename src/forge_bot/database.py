@@ -1,6 +1,7 @@
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.utils import parseaddr
 from typing import Any
 from urllib.parse import quote
 
@@ -14,7 +15,8 @@ from .roles import is_admin_role
 # The time to live for invite tokens, in hours.
 DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
 INVITE_TOKEN_BYTES = 32
-VALID_INVITE_ROLES = frozenset({"user", "admin", "professional"})
+VALID_INVITE_ROLES = frozenset({"user", "admin"})
+RESERVED_INVITE_ROLES = frozenset({"professional"})
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,7 @@ class InviteToken:
     raw_token: str
     token_hash: str
     role: str
+    email: str
     expires_at: datetime
     invite_link: str | None = None
     app_link: str | None = None
@@ -32,6 +35,7 @@ class InviteRedemption:
     status: str
     username: str | None = None
     role: str | None = None
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +92,25 @@ def build_telegram_app_link(bot_username: str, raw_token: str) -> str:
     return f"tg://resolve?domain={clean_username}&start={quote(raw_token, safe='')}"
 
 
+def normalize_invite_email(email: str) -> str | None:
+    """Return a normalized invite email, or None when the input is invalid."""
+    cleaned = email.strip()
+    if not cleaned or any(char.isspace() for char in cleaned):
+        return None
+
+    _, parsed = parseaddr(cleaned)
+    if parsed != cleaned:
+        return None
+
+    local, separator, domain = cleaned.rpartition("@")
+    if separator != "@" or not local or not domain:
+        return None
+    if "." not in domain or domain.startswith(".") or domain.endswith("."):
+        return None
+
+    return cleaned.lower()
+
+
 def conect_db() -> Any | None:
     """Open a PostgreSQL connection using validated application settings.
 
@@ -111,7 +134,7 @@ def conect_db() -> Any | None:
 
 
 def verify_user(telegram_id: int) -> bool:
-    """Check whether a Telegram user is linked to an authenticated account."""
+    """Check whether a Telegram user is linked to an internal account."""
     conn = conect_db()
     if not conn:
         return False
@@ -127,14 +150,14 @@ def verify_user(telegram_id: int) -> bool:
 
 
 def get_user_by_telegram_id(telegram_id: int) -> dict[str, Any] | None:
-    """Return the authenticated user linked to a Telegram ID, if any."""
+    """Return the internal user linked to a Telegram ID, if any."""
     conn = conect_db()
     if not conn:
         return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, role FROM users WHERE telegram_id = %s",
+                "SELECT id, username, email, role FROM users WHERE telegram_id = %s",
                 (telegram_id,),
             )
             user: dict[str, Any] | None = cursor.fetchone()
@@ -271,6 +294,7 @@ def decline_current_policy(telegram_id: int) -> bool:
 def create_invite_token(
     role: str = "user",
     *,
+    email: str,
     ttl_hours: int | None = None,
     created_by_user_id: int | None = None,
     bot_username: str | None = None,
@@ -281,6 +305,9 @@ def create_invite_token(
     normalized_role = role.lower()
     if normalized_role not in VALID_INVITE_ROLES:
         raise ValueError(f"Unsupported invite role: {role}")
+    normalized_email = normalize_invite_email(email)
+    if normalized_email is None:
+        raise ValueError(f"Invalid invite email: {email}")
     if ttl_hours <= 0:
         raise ValueError("Invite token TTL must be positive")
 
@@ -298,12 +325,19 @@ def create_invite_token(
                 INSERT INTO invite_tokens (
                     token_hash,
                     role,
+                    email,
                     expires_at,
                     created_by_user_id
                 )
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (token_hash, normalized_role, expires_at, created_by_user_id),
+                (
+                    token_hash,
+                    normalized_role,
+                    normalized_email,
+                    expires_at,
+                    created_by_user_id,
+                ),
             )
             conn.commit()
             invite_link = (
@@ -318,6 +352,7 @@ def create_invite_token(
                 raw_token,
                 token_hash,
                 normalized_role,
+                normalized_email,
                 expires_at,
                 invite_link,
                 app_link,
@@ -335,7 +370,7 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username FROM users WHERE telegram_id = %s",
+                "SELECT id, username, email FROM users WHERE telegram_id = %s",
                 (telegram_id,),
             )
             existing_user = cursor.fetchone()
@@ -343,11 +378,12 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
                 return InviteRedemption(
                     "already_linked",
                     username=existing_user["username"],
+                    email=existing_user["email"],
                 )
 
             cursor.execute(
                 """
-                SELECT id, token_hash, role, expires_at, used_at
+                SELECT id, token_hash, role, email, expires_at, used_at
                 FROM invite_tokens
                 FOR UPDATE
                 """,
@@ -375,12 +411,12 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
             username = f"telegram_{telegram_id}_{invite['id']}"
             cursor.execute(
                 """
-                INSERT INTO users (username, password, telegram_id, role)
-                VALUES (%s, NULL, %s, %s)
+                INSERT INTO users (username, email, password, telegram_id, role)
+                VALUES (%s, %s, NULL, %s, %s)
                 ON CONFLICT (telegram_id) DO NOTHING
-                RETURNING id, username
+                RETURNING id, username, email
                 """,
-                (username, telegram_id, invite["role"]),
+                (username, invite["email"], telegram_id, invite["role"]),
             )
             user = cursor.fetchone()
             if not user:
@@ -401,6 +437,7 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
                 "success",
                 username=user["username"],
                 role=invite["role"],
+                email=user["email"],
             )
     except psycopg.Error:
         conn.rollback()
@@ -409,33 +446,15 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
         conn.close()
 
 
-def logout_user(telegram_id: int) -> bool:
-    """Remove the Telegram ID link so the user must log in again later."""
-    conn = conect_db()
-    if not conn:
-        return False
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "UPDATE users SET telegram_id = NULL WHERE telegram_id = %s",
-                (telegram_id,),
-            )
-            conn.commit()
-            affected_rows = int(cursor.rowcount or 0)
-            return affected_rows > 0
-    finally:
-        conn.close()
-
-
 def status_user(telegram_id: int) -> dict[str, Any] | None:
-    """Return the logged-in username and role for a Telegram ID, if one exists."""
+    """Return the linked username, email, and role for a Telegram ID, if any."""
     conn = conect_db()
     if not conn:
         return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT username, role FROM users WHERE telegram_id = %s",
+                "SELECT username, email, role FROM users WHERE telegram_id = %s",
                 (telegram_id,),
             )
             user: dict[str, Any] | None = cursor.fetchone()
