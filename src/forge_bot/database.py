@@ -24,8 +24,11 @@ class InviteToken:
     raw_token: str
     token_hash: str
     role: str
-    email: str
+    email: str | None
     expires_at: datetime
+    token_type: str = "single_use"
+    max_uses: int = 1
+    used_count: int = 0
     invite_link: str | None = None
     app_link: str | None = None
 
@@ -349,20 +352,102 @@ def create_invite_token(
                 else None
             )
             return InviteToken(
-                raw_token,
-                token_hash,
-                normalized_role,
-                normalized_email,
-                expires_at,
-                invite_link,
-                app_link,
+                raw_token=raw_token,
+                token_hash=token_hash,
+                role=normalized_role,
+                email=normalized_email,
+                expires_at=expires_at,
+                invite_link=invite_link,
+                app_link=app_link,
+            )
+    finally:
+        conn.close()
+
+
+def create_campaign_invite_token(
+    *,
+    role: str,
+    expires_at: datetime,
+    max_uses: int,
+    created_by_user_id: int | None = None,
+    bot_username: str | None = None,
+) -> InviteToken | None:
+    """Create a reusable campaign invite token with a maximum redemption count."""
+    normalized_role = role.lower()
+    if normalized_role not in VALID_INVITE_ROLES:
+        raise ValueError(f"Unsupported invite role: {role}")
+    if max_uses <= 0:
+        raise ValueError("Campaign invite max uses must be positive")
+
+    settings = get_settings()
+    if max_uses > settings.campaign_invite_max_uses_limit:
+        raise ValueError(
+            "Campaign invite max uses exceeds "
+            f"{settings.campaign_invite_max_uses_limit}"
+        )
+
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        raise ValueError("Campaign invite expiration must be in the future")
+
+    raw_token = generate_invite_token()
+    token_hash = hash_invite_token(raw_token)
+
+    conn = conect_db()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO invite_tokens (
+                    token_hash,
+                    token_type,
+                    role,
+                    email,
+                    expires_at,
+                    max_uses,
+                    used_count,
+                    created_by_user_id
+                )
+                VALUES (%s, 'campaign', %s, NULL, %s, %s, 0, %s)
+                """,
+                (
+                    token_hash,
+                    normalized_role,
+                    expires_at,
+                    max_uses,
+                    created_by_user_id,
+                ),
+            )
+            conn.commit()
+            invite_link = (
+                build_invite_link(bot_username, raw_token) if bot_username else None
+            )
+            app_link = (
+                build_telegram_app_link(bot_username, raw_token)
+                if bot_username
+                else None
+            )
+            return InviteToken(
+                raw_token=raw_token,
+                token_hash=token_hash,
+                role=normalized_role,
+                email=None,
+                expires_at=expires_at,
+                token_type="campaign",
+                max_uses=max_uses,
+                used_count=0,
+                invite_link=invite_link,
+                app_link=app_link,
             )
     finally:
         conn.close()
 
 
 def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
-    """Redeem a single-use invite token and link it to the Telegram user."""
+    """Redeem an invite token and link it to the Telegram user."""
     conn = conect_db()
     if not conn:
         return InviteRedemption("db_error")
@@ -383,7 +468,16 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
 
             cursor.execute(
                 """
-                SELECT id, token_hash, role, email, expires_at, used_at
+                SELECT
+                    id,
+                    token_hash,
+                    token_type,
+                    role,
+                    email,
+                    expires_at,
+                    used_at,
+                    max_uses,
+                    used_count
                 FROM invite_tokens
                 FOR UPDATE
                 """,
@@ -399,7 +493,8 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
             if not invite:
                 return InviteRedemption("invalid")
 
-            if invite["used_at"] is not None:
+            token_type = invite["token_type"]
+            if token_type == "single_use" and invite["used_at"] is not None:
                 return InviteRedemption("used")
 
             expires_at = invite["expires_at"]
@@ -407,6 +502,9 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
             if expires_at <= datetime.now(timezone.utc):
                 return InviteRedemption("expired")
+
+            if token_type == "campaign" and invite["used_count"] >= invite["max_uses"]:
+                return InviteRedemption("campaign_full")
 
             username = f"telegram_{telegram_id}_{invite['id']}"
             cursor.execute(
@@ -423,14 +521,45 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
                 conn.rollback()
                 return InviteRedemption("already_linked")
 
+            if token_type == "campaign":
+                cursor.execute(
+                    """
+                    UPDATE invite_tokens
+                    SET used_count = used_count + 1,
+                        used_at = CURRENT_TIMESTAMP,
+                        used_by_user_id = %s
+                    WHERE id = %s
+                      AND token_type = 'campaign'
+                      AND used_count < max_uses
+                    """,
+                    (user["id"], invite["id"]),
+                )
+                if int(cursor.rowcount or 0) != 1:
+                    conn.rollback()
+                    return InviteRedemption("campaign_full")
+            else:
+                cursor.execute(
+                    """
+                    UPDATE invite_tokens
+                    SET used_at = CURRENT_TIMESTAMP,
+                        used_by_user_id = %s,
+                        used_count = 1
+                    WHERE id = %s
+                      AND token_type = 'single_use'
+                      AND used_at IS NULL
+                    """,
+                    (user["id"], invite["id"]),
+                )
+                if int(cursor.rowcount or 0) != 1:
+                    conn.rollback()
+                    return InviteRedemption("used")
+
             cursor.execute(
                 """
-                UPDATE invite_tokens
-                SET used_at = CURRENT_TIMESTAMP,
-                    used_by_user_id = %s
-                WHERE id = %s
+                INSERT INTO invite_token_redemptions (invite_token_id, user_id)
+                VALUES (%s, %s)
                 """,
-                (user["id"], invite["id"]),
+                (invite["id"], user["id"]),
             )
             conn.commit()
             return InviteRedemption(
