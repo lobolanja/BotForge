@@ -1,4 +1,5 @@
 def test_command_modules_import() -> None:
+    import forge_bot.commands.invite as invite_module
     from forge_bot.commands.auth import status
     from forge_bot.commands.auth_guard import admin_required
     from forge_bot.commands.greet import greet
@@ -9,6 +10,7 @@ def test_command_modules_import() -> None:
     from forge_bot.commands.translate import translate
     from forge_bot.commands.unknown import unknown_command
 
+    assert hasattr(invite_module, "invite")
     assert callable(greet)
     assert callable(help_command)
     assert callable(admin_required)

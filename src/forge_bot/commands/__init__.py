@@ -1,23 +1,5 @@
-from .auth import start, status
-from .auth_guard import require_login
-from .greet import greet
-from .help import help_command
-from .invite import invite
-from .ping import ping
-from .time import time
-from .translate import translate
-from .unknown import unknown_command
+"""Command package.
 
-# Re-export command handlers from one place so main.py can stay compact.
-__all__ = [
-    "greet",
-    "help_command",
-    "invite",
-    "require_login",
-    "ping",
-    "start",
-    "status",
-    "time",
-    "translate",
-    "unknown_command",
-]
+Handlers are imported from their concrete modules so package attributes do not
+shadow command modules such as ``forge_bot.commands.invite``.
+"""
