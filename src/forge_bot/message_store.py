@@ -94,15 +94,21 @@ def normalize_update(update: Update) -> InboundMessage | None:
             message_type=message_type,
             file_id=file.file_id,
             file_unique_id=file.file_unique_id,
-            file_name=getattr(file, "file_name", None)
-            if "file_name" in optional_fields
-            else None,
-            mime_type=getattr(file, "mime_type", None)
-            if "mime_type" in optional_fields
-            else None,
-            file_size=getattr(file, "file_size", None)
-            if "file_size" in optional_fields
-            else None,
+            file_name=(
+                getattr(file, "file_name", None)
+                if "file_name" in optional_fields
+                else None
+            ),
+            mime_type=(
+                getattr(file, "mime_type", None)
+                if "mime_type" in optional_fields
+                else None
+            ),
+            file_size=(
+                getattr(file, "file_size", None)
+                if "file_size" in optional_fields
+                else None
+            ),
         )
 
     return None
