@@ -7,6 +7,9 @@ from forge_bot.config import (
     DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
     DEFAULT_DB_PORT,
+    DEFAULT_MESSAGE_EXPIRATION_HOURS,
+    DEFAULT_MESSAGE_MAX_RETRIES,
+    DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
     DEFAULT_OLLAMA_MODEL,
     DatabaseSettings,
     Settings,
@@ -61,5 +64,10 @@ def test_defaults_are_applied() -> None:
     assert settings.campaign_invite_max_uses_limit == (
         DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT
     )
+    assert settings.message_processing_stale_minutes == (
+        DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES
+    )
+    assert settings.message_expiration_hours == DEFAULT_MESSAGE_EXPIRATION_HOURS
+    assert settings.message_max_retries == DEFAULT_MESSAGE_MAX_RETRIES
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled

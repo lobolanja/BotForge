@@ -15,6 +15,9 @@ DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
 DEFAULT_BOT_PRIVACY_NOTICE_VERSION = "2026-05-08"
 DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
 DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT = 1000
+DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES = 30
+DEFAULT_MESSAGE_EXPIRATION_HOURS = 24
+DEFAULT_MESSAGE_MAX_RETRIES = 1
 
 
 class SettingsError(RuntimeError):
@@ -134,6 +137,9 @@ class Settings(DatabaseSettings):
     bot_policy_url: str = ""
     invite_token_ttl_hours: int = DEFAULT_INVITE_TOKEN_TTL_HOURS
     campaign_invite_max_uses_limit: int = DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT
+    message_processing_stale_minutes: int = DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES
+    message_expiration_hours: int = DEFAULT_MESSAGE_EXPIRATION_HOURS
+    message_max_retries: int = DEFAULT_MESSAGE_MAX_RETRIES
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
 
@@ -195,6 +201,18 @@ class Settings(DatabaseSettings):
                 env.get("CAMPAIGN_INVITE_MAX_USES_LIMIT"),
                 DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
             ),
+            message_processing_stale_minutes=_parse_positive_int(
+                env.get("MESSAGE_PROCESSING_STALE_MINUTES"),
+                DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
+            ),
+            message_expiration_hours=_parse_positive_int(
+                env.get("MESSAGE_EXPIRATION_HOURS"),
+                DEFAULT_MESSAGE_EXPIRATION_HOURS,
+            ),
+            message_max_retries=_parse_non_negative_int(
+                env.get("MESSAGE_MAX_RETRIES"),
+                DEFAULT_MESSAGE_MAX_RETRIES,
+            ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")
             ),
@@ -250,6 +268,20 @@ def _parse_positive_int(value: str | None, default: int) -> int:
         raise SettingsError(f"Value must be an integer: {value}") from exc
     if result <= 0:
         raise SettingsError(f"Value must be positive: {value}")
+    return result
+
+
+def _parse_non_negative_int(value: str | None, default: int) -> int:
+    """Parse and validate a non-negative integer setting."""
+    cleaned = _clean(value)
+    if cleaned is None:
+        return default
+    try:
+        result = int(cleaned)
+    except ValueError as exc:
+        raise SettingsError(f"Value must be an integer: {value}") from exc
+    if result < 0:
+        raise SettingsError(f"Value must be non-negative: {value}")
     return result
 
 

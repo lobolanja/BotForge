@@ -12,7 +12,8 @@ from .commands.time import time
 from .commands.translate import translate
 from .commands.unknown import unknown_command
 from .config import SettingsError, get_settings
-from .router import ask_ia
+from .message_store import recover_unfinished_messages
+from .router import ask_ia, record_inbound_update
 
 
 def main() -> None:
@@ -30,6 +31,17 @@ def main() -> None:
 
     # This is the central registry for Telegram command handlers.
     bot = Application.builder().token(settings.telegram_token).build()
+
+    recovery = recover_unfinished_messages()
+    print(
+        "Inbound message recovery: "
+        f"retried={recovery.retried} "
+        f"expired={recovery.expired} "
+        f"failed={recovery.failed}"
+    )
+
+    # Persist supported messages before command or AI handlers do expensive work.
+    bot.add_handler(MessageHandler(filters.ALL, record_inbound_update), group=-1)
 
     bot.add_handler(CommandHandler("greet", greet))
     bot.add_handler(CommandHandler("ping", ping))
