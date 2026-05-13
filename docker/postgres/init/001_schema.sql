@@ -59,3 +59,49 @@ CREATE TABLE IF NOT EXISTS user_policy_acceptances (
 
 CREATE INDEX IF NOT EXISTS ix_user_policy_acceptances_user_version
 ON user_policy_acceptances (user_id, policy_version, privacy_notice_version);
+
+CREATE TABLE IF NOT EXISTS inbound_messages (
+    id SERIAL PRIMARY KEY,
+    telegram_update_id BIGINT NOT NULL UNIQUE,
+    telegram_message_id BIGINT NOT NULL,
+    chat_id BIGINT NOT NULL,
+    telegram_user_id BIGINT NULL,
+    message_type VARCHAR(32) NOT NULL,
+    text TEXT NULL,
+    file_id TEXT NULL,
+    file_unique_id TEXT NULL,
+    file_name TEXT NULL,
+    mime_type TEXT NULL,
+    file_size BIGINT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'persisted',
+    received_at TIMESTAMPTZ NULL,
+    persisted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processing_started_at TIMESTAMPTZ NULL,
+    processing_finished_at TIMESTAMPTZ NULL,
+    answered_at TIMESTAMPTZ NULL,
+    failed_at TIMESTAMPTZ NULL,
+    failure_reason TEXT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    raw_update JSONB NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT inbound_messages_status_check
+        CHECK (
+            status IN (
+                'received',
+                'persisted',
+                'ignored',
+                'queued',
+                'processing',
+                'answered',
+                'failed',
+                'expired'
+            )
+        )
+);
+
+CREATE INDEX IF NOT EXISTS ix_inbound_messages_status_created_at
+ON inbound_messages (status, created_at);
+
+CREATE INDEX IF NOT EXISTS ix_inbound_messages_chat_user_message
+ON inbound_messages (chat_id, telegram_user_id, telegram_message_id);

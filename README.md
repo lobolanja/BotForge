@@ -237,8 +237,40 @@ Later migrations add invite-token identity linking:
 - `invite_tokens.used_at`
 - `invite_tokens.used_by_user_id`
 - `invite_tokens.created_by_user_id`
+- `inbound_messages` stores supported Telegram message metadata and processing
+  state before AI work starts
 
-## 4. Create The First Invite Link
+## 4. Inbound Message Recovery
+
+BotForge uses Telegram long polling. Telegram may keep pending bot updates while
+the bot is offline, but only for up to 24 hours. BotForge cannot retrieve
+arbitrary old chat history through the normal Bot API, so messages that Telegram
+never delivers during that retention window are unrecoverable.
+
+Supported incoming non-command text and file messages are persisted in
+`inbound_messages` before AI processing starts. The table tracks the Telegram
+`update_id`, `message_id`, chat and user ids, message type, optional text, file
+metadata, retry count, and a durable status:
+
+```text
+persisted -> queued -> processing -> answered
+persisted -> ignored
+processing -> failed
+processing -> queued
+queued/processing -> expired
+```
+
+On startup, BotForge scans unfinished rows. Messages older than
+`MESSAGE_EXPIRATION_HOURS` are marked `expired`. Stale `processing` rows older
+than `MESSAGE_PROCESSING_STALE_MINUTES` are moved back to `queued` until
+`MESSAGE_MAX_RETRIES` is exceeded, then they are marked `failed`.
+
+File messages store Telegram file metadata such as `file_id`, `file_unique_id`,
+file name, MIME type, and size. If a file must be preserved long term, download
+and archive it soon after receipt; a known `file_id` can request a fresh
+Telegram download path later, subject to Telegram Bot API file limits.
+
+## 5. Create The First Invite Link
 
 BotForge links Telegram users to invited email identities through invite links:
 
@@ -280,7 +312,7 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-## 5. Admin Invite Management
+## 6. Admin Invite Management
 
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
@@ -371,7 +403,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 5. Telegram Smoke Test
+## 7. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
@@ -513,6 +545,8 @@ python -m pytest
 
 - Account privacy controls such as `/privacy`, `/memory_clear`, and
   `/delete_my_data` are planned as explicit commands.
+- Telegram updates that were never delivered to the bot and are older than
+  Telegram's pending-update retention window cannot be recovered.
 - The default AI profile uses `gemma2:2b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
