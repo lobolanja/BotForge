@@ -1,0 +1,58 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+
+from forge_bot.database import redeem_invite_token, status_user
+
+from .policy import policy_prompt
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.effective_user:
+        return
+
+    args = context.args or []
+
+    await update.message.reply_text(
+        "Welcome to BotForge. Open your invite link to connect your identity."
+    )
+
+    if not args:
+        return
+
+    redemption = redeem_invite_token(args[0], update.effective_user.id)
+    if redemption.status == "success":
+        await update.message.reply_text(f"Invite accepted.\n\n{policy_prompt()}")
+    elif redemption.status == "already_linked":
+        await update.message.reply_text("This Telegram account is already linked.")
+    elif redemption.status == "expired":
+        await update.message.reply_text("This invite link has expired.")
+    elif redemption.status == "used":
+        await update.message.reply_text("This invite link has already been used.")
+    elif redemption.status == "campaign_full":
+        await update.message.reply_text("This campaign invite link is full.")
+    elif redemption.status == "invalid":
+        await update.message.reply_text("This invite link is invalid.")
+    else:
+        await update.message.reply_text(
+            "Invite identity connection is temporarily unavailable."
+        )
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.effective_user:
+        return
+
+    user = status_user(update.effective_user.id)
+    if user:
+        email = user.get("email")
+        if email:
+            await update.message.reply_text(
+                f"Your Telegram identity is linked to {email} "
+                f"with role: {user['role']}."
+            )
+            return
+        await update.message.reply_text(
+            f"Your Telegram identity is linked with role: {user['role']}."
+        )
+    else:
+        await update.message.reply_text("Your Telegram identity is not linked yet.")

@@ -1,0 +1,52 @@
+name: Code Quality
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  quality:
+    name: Format, lint, type, security, and complexity checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run Ruff format check
+        run: ruff format --check src tests
+
+      - name: Run Ruff lint
+        run: ruff check src tests
+
+      - name: Run Black format check
+        run: black --check src tests
+
+      - name: Run isort import-order check
+        run: isort --check-only src tests
+
+      - name: Run Mypy type check
+        run: mypy src
+
+      - name: Run Bandit security check
+        run: bandit -r src -ll
+
+      - name: Run Radon complexity report
+        run: radon cc src tests -s -a

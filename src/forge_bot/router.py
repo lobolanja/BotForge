@@ -1,25 +1,27 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from . import engine
-from .handlers import require_login
 
-# This file manages the conversation logic: 
-# It receives the message, triggers the "typing" status, and calls the AI.
+from . import engine
+from .commands.auth_guard import require_login
+
 
 @require_login
-async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Variables containing the user's message and first name
-    message = update.message.text
+async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Route identity-linked plain-text Telegram messages to the AI engine."""
+    if not update.message or not update.effective_user or not update.effective_chat:
+        return
+
+    # Extract the current Telegram message and the visible user name.
+    message = update.message.text or ""
     user = update.effective_user.first_name
-    
-    # Send "typing..." action to Telegram to provide visual feedback to the user
+
+    # Show Telegram's typing indicator while the LLM response is generated.
     await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id, 
-        action="typing"
+        chat_id=update.effective_chat.id, action="typing"
     )
-    
-    # Call the 'answer' function from your engine.py file and wait for the result
+
+    # Delegate prompt assembly and Ollama communication to the engine module.
     answer = await engine.answer(user, message)
-    
-    # Send the AI's response back to the user in Telegram
+
+    # Send the generated answer back into the same chat.
     await update.message.reply_text(answer)

@@ -36,12 +36,13 @@ Invite a new person to use the bot without sharing passwords through Telegram.
 2. Admin sends:
 
    ```text
-   /invite user@email.com
+   /invite user user@example.com
    ```
 
 3. Bot checks that the sender is an admin.
 4. Bot generates a secure, single-use, expiring token.
-5. Bot stores only the hashed token.
+5. Bot stores the hashed token, the intended user's email, the target role, and
+   audit metadata. The raw token is not stored.
 6. Bot replies with a Telegram invite link:
 
    ```text
@@ -50,6 +51,11 @@ Invite a new person to use the bot without sharing passwords through Telegram.
 
 7. Admin sends that link to the intended user.
 8. Admin can trust that the link cannot be reused indefinitely.
+
+For the first beta, invites are tied to both a target role and an email address.
+The email gives the product a stable user attribute for future admin views, web
+UI, support workflows, and audit trails. The admin still sends the generated
+Telegram link to the intended user out of band.
 
 ## User Experience Goal
 
@@ -63,6 +69,8 @@ The admin should feel that access is controlled and simple.
 - Token expiration.
 - Token audit fields.
 - Token redemption flow.
+- Role and email captured when the invite is created.
+- User email available for future web UI and admin/support workflows.
 
 ## Journey 2: New User Joins Through Invite Link
 
@@ -86,8 +94,10 @@ Start using the bot without understanding technical authentication.
    ```
 
 5. Bot validates the token.
-6. Bot links the Telegram account to an internal user.
-   6.1 If the user does not have an email, the bot can ask for one and link it to the invite.
+6. Bot links the Telegram account to the invited internal user identity.
+   6.1 The invite email is stored on the internal user.
+   6.2 The Telegram ID identifies the Telegram account that redeemed the invite.
+   6.3 The user does not need a separate `/login` or `/logout` session.
 7. Bot shows a short usage policy summary.
 8. User accepts the current policy version.
 9. Bot replies with a friendly success message:
@@ -98,6 +108,10 @@ Start using the bot without understanding technical authentication.
 
 10. User sends their first normal message.
 11. Bot replies normally.
+
+If the user declines the policy, the Telegram ID remains identified but protected
+bot functionality stays blocked. The user can accept the policy later or use the
+documented privacy/deletion flow when that later-phase feature exists.
 
 ## User Experience Goal
 
@@ -112,6 +126,8 @@ The user should feel that onboarding is effortless.
 - Policy acceptance storage.
 - Clear success/failure messages.
 - Authenticated chat access.
+- Internal user record stores email and Telegram ID after invite redemption.
+- No password-style login/logout flow for invite-authenticated users.
 
 ## Journey 3: User Sends First Message To A Domain Bot
 
@@ -380,6 +396,11 @@ Understand and control what the bot stores about them.
 
 6. Bot follows the configured deletion or beta request flow.
 
+This is the user-facing control surface for removing stored information. In the
+invite-based model, `/logout` is not a core user journey because the user is not
+holding a password session; the bot identifies the Telegram account that accepted
+an invite.
+
 ## User Experience Goal
 
 The user should feel in control of their privacy and stored context.
@@ -391,6 +412,8 @@ The user should feel in control of their privacy and stored context.
 - Memory deletion.
 - Broader user-data deletion or deletion request flow.
 - Tests for user isolation.
+- Clear removal path for the Telegram identity link when the user stops using
+  the bot.
 
 ## Journey 10: Operator Validates Beta Readiness
 

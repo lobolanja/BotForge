@@ -1,0 +1,17 @@
+{
+  "bot_profile_id": "default_dev",
+  "bot_display_name": "BotForge Development Assistant",
+  "bot_description": "Default development profile for local BotForge testing.",
+  "system_prompt_file": "system_prompt.md",
+  "domain_rules": [
+    "Answer clearly and concisely.",
+    "Ask a clarifying question when the user's request is ambiguous.",
+    "Do not claim access to tools, files, or systems that were not provided."
+  ],
+  "disclaimer_text": "This assistant is a development profile and may need review before production use.",
+  "default_language": "en",
+  "llm_provider": "ollama",
+  "llm_model": "gemma3:4b",
+  "memory_enabled": false,
+  "analytics_enabled": false
+}

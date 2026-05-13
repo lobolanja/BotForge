@@ -10,7 +10,7 @@ readme = "README.md"
 
 license = { text = "PolyForm Noncommercial License 1.0.0" }
 requires-python = ">=3.10"
-keywords = ["telegram", "bot", "ollama", "ai", "llm", "chatbot", "python", "mariadb", "bcrypt"]
+keywords = ["telegram", "bot", "ollama", "ai", "llm", "chatbot", "python", "postgresql", "bcrypt"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -32,12 +32,17 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "ollama>=0.4.0",
     "deep-translator>=1.11.0",
-    "mysql-connector-python>=8.0.0",
+    "psycopg[binary]>=3.2.0",
     "bcrypt>=4.1.0",
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "bandit[toml]>=1.7.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "radon>=6.0.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4.0",
@@ -56,6 +61,14 @@ target-version = "py310"
 select = ["E", "F", "I", "UP", "W"]
 ignore = []
 
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
 [tool.mypy]
 python_version = "3.10"
 strict = true
@@ -67,3 +80,4 @@ disallow_untyped_defs = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = "test_*.py"
+pythonpath = ["src"]

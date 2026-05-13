@@ -1,59 +1,61 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from . import ask_ia, greet, ping, help_command, unknown_command, translate,time, login, status, logout
-import os
-from dotenv import load_dotenv
 
-# Loads environment variables from the .env file into the system
-load_dotenv()
+from .bot_profile import BotProfileError, load_active_bot_profile
+from .commands.auth import start, status
+from .commands.campaign_invite import campaign_invite
+from .commands.greet import greet
+from .commands.help import help_command
+from .commands.invite import invite
+from .commands.ping import ping
+from .commands.policy import accept_policy, decline_policy, policy
+from .commands.time import time
+from .commands.translate import translate
+from .commands.unknown import unknown_command
+from .config import SettingsError, get_settings
+from .router import ask_ia
 
-def main():
-    # Retrieve the token from the environment variables
-    token = os.getenv("TELEGRAM_TOKEN")
-    
-    if not token:
-        print("Error: TELEGRAM_TOKEN not found in .env file")
-        return
-    
-    # variable that contains the bot that is the one you are working with
-    bot = Application.builder().token(token).build()
-    
-    # call to the 'saludar' command
+
+def main() -> None:
+    """Start the Telegram bot after validating shared and bot-specific config."""
+    try:
+        settings = get_settings()
+        load_active_bot_profile(
+            settings.bot_profile,
+            settings.bot_profiles_dir,
+        )
+    except SettingsError as error:
+        raise SystemExit(f"Configuration error: {error}") from None
+    except BotProfileError as error:
+        raise SystemExit(f"Bot profile error: {error}") from None
+
+    # This is the central registry for Telegram command handlers.
+    bot = Application.builder().token(settings.telegram_token).build()
+
     bot.add_handler(CommandHandler("greet", greet))
-    
-    # call to the 'ping' command
     bot.add_handler(CommandHandler("ping", ping))
-    
-    # call to the 'help' command
     bot.add_handler(CommandHandler("help", help_command))
-    
-    # call to the 'unknown' command
+    bot.add_handler(CommandHandler("start", start))
     bot.add_handler(CommandHandler("unknown", unknown_command))
-    
-    # call to the 'translate' command
     bot.add_handler(CommandHandler("translate", translate))
-    
-    # call to the 'time' command
     bot.add_handler(CommandHandler("time", time))
-    
-    # call to the 'login' command
-    bot.add_handler(CommandHandler("login", login))
-    
-    # call to the 'status' command
     bot.add_handler(CommandHandler("status", status))
-    
-    # call to the 'logout' command
-    bot.add_handler(CommandHandler("logout", logout))
-    
-    # call to the 'unknown' command
+    bot.add_handler(CommandHandler("policy", policy))
+    bot.add_handler(CommandHandler("accept_policy", accept_policy))
+    bot.add_handler(CommandHandler("decline_policy", decline_policy))
+    bot.add_handler(CommandHandler("invite", invite))
+    bot.add_handler(CommandHandler("campaign_invite", campaign_invite))
+
+    # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
-    
-    # call to the ia
+
+    # Non-command text is routed to the AI conversation flow.
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
-    
-    # to make sure it is running
+
+    # Log a short startup signal for Docker and local development.
     print("Bot in execution...")
     bot.run_polling()
 
-# Entry point: ensures main() only runs if script is executed directly
-if __name__ == '__main__':
+
+# Run the app only when this module is executed directly.
+if __name__ == "__main__":
     main()
