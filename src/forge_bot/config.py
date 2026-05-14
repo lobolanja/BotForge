@@ -177,9 +177,7 @@ class Settings(DatabaseSettings):
             )
 
         db_port = _parse_db_port(env.get("DB_PORT"))
-        botforge_env = (
-            _clean(env.get("BOTFORGE_ENV")) or DEFAULT_BOTFORGE_ENV
-        ).lower()
+        botforge_env = (_clean(env.get("BOTFORGE_ENV")) or DEFAULT_BOTFORGE_ENV).lower()
         _validate_production_secrets(
             botforge_env,
             telegram_token=required["TELEGRAM_TOKEN"] or "",
@@ -327,8 +325,7 @@ def _validate_production_secrets(
     if blocked:
         details = ", ".join(blocked)
         raise SettingsError(
-            "Production configuration cannot use development secrets: "
-            f"{details}."
+            f"Production configuration cannot use development secrets: {details}."
         )
 
 
