@@ -9,6 +9,12 @@ from forge_bot.database import (
     verify_user,
 )
 
+IDENTITY_UNAVAILABLE_MESSAGE = (
+    "Identity checks are temporarily unavailable. Please try again in a moment."
+)
+ACCEPT_UNLINKED_MESSAGE = "Open your Telegram invite link before accepting the policy."
+DECLINE_UNLINKED_MESSAGE = "Open your Telegram invite link before declining the policy."
+
 POLICY_SUMMARY = """Before you start, you must accept the BotForge usage policy.
 
 Summary:
@@ -62,10 +68,7 @@ async def accept_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not update.message or not update.effective_user:
         return
 
-    if not verify_user(update.effective_user.id):
-        await update.message.reply_text(
-            "Open your Telegram invite link before accepting the policy."
-        )
+    if not await _require_linked_identity(update, ACCEPT_UNLINKED_MESSAGE):
         return
 
     if accept_current_policy(update.effective_user.id):
@@ -78,10 +81,7 @@ async def decline_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not update.message or not update.effective_user:
         return
 
-    if not verify_user(update.effective_user.id):
-        await update.message.reply_text(
-            "Open your Telegram invite link before declining the policy."
-        )
+    if not await _require_linked_identity(update, DECLINE_UNLINKED_MESSAGE):
         return
 
     if decline_current_policy(update.effective_user.id):
@@ -90,3 +90,17 @@ async def decline_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
     else:
         await update.message.reply_text("Policy decline is temporarily unavailable.")
+
+
+async def _require_linked_identity(update: Update, unlinked_message: str) -> bool:
+    if not update.message or not update.effective_user:
+        return False
+
+    verified = verify_user(update.effective_user.id)
+    if verified is None:
+        await update.message.reply_text(IDENTITY_UNAVAILABLE_MESSAGE)
+        return False
+    if not verified:
+        await update.message.reply_text(unlinked_message)
+        return False
+    return True

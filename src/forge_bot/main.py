@@ -1,3 +1,5 @@
+import logging
+
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from .bot_profile import BotProfileError, load_active_bot_profile
@@ -15,9 +17,54 @@ from .config import SettingsError, get_settings
 from .message_store import recover_unfinished_messages
 from .router import ask_ia, record_inbound_update
 
+logger = logging.getLogger(__name__)
+COMMAND_HANDLERS = (
+    ("greet", greet),
+    ("ping", ping),
+    ("help", help_command),
+    ("start", start),
+    ("unknown", unknown_command),
+    ("translate", translate),
+    ("time", time),
+    ("status", status),
+    ("policy", policy),
+    ("accept_policy", accept_policy),
+    ("decline_policy", decline_policy),
+    ("invite", invite),
+    ("campaign_invite", campaign_invite),
+)
+
+
+def setup_logging() -> None:
+    """Configure process logging for local and container runtime diagnostics."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+def log_startup_configuration() -> None:
+    """Log a secret-free runtime summary useful during beta startup."""
+    settings = get_settings()
+    logger.info(
+        "startup_config env=%s db_host=%s db_port=%s db_name=%s "
+        "ollama_host=%s ollama_model=%s bot_profile=%s ai_timeout_seconds=%s "
+        "ai_max_response_chars=%s",
+        settings.botforge_env,
+        settings.db_host,
+        settings.db_port,
+        settings.db_name,
+        settings.ollama_host,
+        settings.ollama_model,
+        settings.bot_profile,
+        settings.ai_timeout_seconds,
+        settings.ai_max_response_chars,
+    )
+
 
 def main() -> None:
     """Start the Telegram bot after validating shared and bot-specific config."""
+    setup_logging()
     try:
         settings = get_settings()
         load_active_bot_profile(
@@ -29,33 +76,24 @@ def main() -> None:
     except BotProfileError as error:
         raise SystemExit(f"Bot profile error: {error}") from None
 
+    log_startup_configuration()
+
     # This is the central registry for Telegram command handlers.
     bot = Application.builder().token(settings.telegram_token).build()
 
     recovery = recover_unfinished_messages()
-    print(
-        "Inbound message recovery: "
-        f"retried={recovery.retried} "
-        f"expired={recovery.expired} "
-        f"failed={recovery.failed}"
+    logger.info(
+        "inbound_message_recovery retried=%s expired=%s failed=%s",
+        recovery.retried,
+        recovery.expired,
+        recovery.failed,
     )
 
     # Persist supported messages before command or AI handlers do expensive work.
     bot.add_handler(MessageHandler(filters.ALL, record_inbound_update), group=-1)
 
-    bot.add_handler(CommandHandler("greet", greet))
-    bot.add_handler(CommandHandler("ping", ping))
-    bot.add_handler(CommandHandler("help", help_command))
-    bot.add_handler(CommandHandler("start", start))
-    bot.add_handler(CommandHandler("unknown", unknown_command))
-    bot.add_handler(CommandHandler("translate", translate))
-    bot.add_handler(CommandHandler("time", time))
-    bot.add_handler(CommandHandler("status", status))
-    bot.add_handler(CommandHandler("policy", policy))
-    bot.add_handler(CommandHandler("accept_policy", accept_policy))
-    bot.add_handler(CommandHandler("decline_policy", decline_policy))
-    bot.add_handler(CommandHandler("invite", invite))
-    bot.add_handler(CommandHandler("campaign_invite", campaign_invite))
+    for command, handler in COMMAND_HANDLERS:
+        bot.add_handler(CommandHandler(command, handler))
 
     # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))
@@ -64,7 +102,7 @@ def main() -> None:
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
 
     # Log a short startup signal for Docker and local development.
-    print("Bot in execution...")
+    logger.info("bot_polling_started")
     bot.run_polling()
 
 
