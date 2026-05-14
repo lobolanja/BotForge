@@ -13,6 +13,7 @@ from .message_store import (
     persist_inbound_message,
     persist_update,
 )
+from .request_state import REQUEST_WAITING_MESSAGE, request_state
 
 
 async def record_inbound_update(
@@ -52,33 +53,55 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current_status = persisted["status"]
     if current_status in {"answered", "ignored", "expired"}:
         return
-    if current_status in {"persisted", "received", "failed"}:
-        mark_queued(update.update_id)
-    elif current_status == "processing":
+    if current_status == "processing":
         return
 
-    claimed = mark_processing(update.update_id)
-    if claimed is None:
+    active_profile = engine.load_default_profile()
+    active_request = await request_state.try_start(
+        user_id=update.effective_user.id,
+        chat_id=update.effective_chat.id,
+        received_at=update.message.date,
+        provider=active_profile.llm_provider,
+    )
+    if active_request is None:
+        mark_ignored(update.update_id)
+        await update.message.reply_text(REQUEST_WAITING_MESSAGE)
         return
 
-    # Extract the current Telegram message and the visible user name.
-    message = update.message.text or ""
-    user = update.effective_user.first_name
+    finished_status = "failed"
 
     try:
+        if current_status in {"persisted", "received", "failed"}:
+            mark_queued(update.update_id)
+
+        claimed = mark_processing(update.update_id)
+        if claimed is None:
+            return
+
+        # Extract the current Telegram message and the visible user name.
+        message = update.message.text or ""
+        user = update.effective_user.first_name
+
         # Show Telegram's typing indicator while the LLM response is generated.
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id, action="typing"
         )
 
         # Delegate prompt assembly and Ollama communication to the engine module.
-        answer = await engine.answer(user, message)
+        answer = await engine.answer(user, message, profile=active_profile)
 
         # Send the generated answer back into the same chat.
         await update.message.reply_text(answer)
         mark_answered(update.update_id)
+        finished_status = "answered"
     except Exception as exc:
         mark_failed(update.update_id, type(exc).__name__)
         await update.message.reply_text(
             "Sorry, I could not finish that message. It has been stored for review."
+        )
+    finally:
+        await request_state.finish(
+            user_id=update.effective_user.id,
+            request_id=active_request.request_id,
+            status=finished_status,
         )
