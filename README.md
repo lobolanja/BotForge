@@ -64,6 +64,8 @@ development defaults:
 ```env
 TELEGRAM_TOKEN=<telegram_bot_token>
 
+BOTFORGE_ENV=development
+
 DB_HOST=postgres
 DB_USER=botforge
 DB_PASSWORD=botforge_dev_password
@@ -81,6 +83,9 @@ Notes:
 
 - Replace `<telegram_bot_token>` with your real token from BotFather and remove
   the angle brackets.
+- Keep `BOTFORGE_ENV=development` for local work. Set `BOTFORGE_ENV=production`
+  for beta or production deployments; startup fails if the Telegram token is
+  still the placeholder or `DB_PASSWORD` is still `botforge_dev_password`.
 - The database credentials above are development defaults. Change them before
   using this stack outside your local machine.
 - `DB_HOST` must be `postgres` when running inside Docker Compose.
@@ -179,6 +184,9 @@ Check container status:
 ```bash
 docker compose ps
 ```
+
+The `botforge`, `postgres`, and `ollama` services include Docker health checks.
+`botforge` validates configuration without printing secret values.
 
 Follow BotForge logs:
 
@@ -418,6 +426,27 @@ Only one running BotForge container should use the same Telegram token.
 
 ## Service Operations
 
+### Production Readiness
+
+Before inviting beta users, create `.env` from `.env.example` and verify:
+
+```text
+TELEGRAM_TOKEN is the real BotFather token and is not committed
+BOTFORGE_ENV=production
+DB_PASSWORD is not botforge_dev_password
+POSTGRES_PASSWORD comes from DB_PASSWORD and is strong
+BOT_PROFILE points to the intended beta profile
+OLLAMA_MODEL matches the active profile's llm_model
+BOT_ANALYTICS_CONSENT_ENABLED and BOT_TRAINING_CONSENT_ENABLED are intentional
+postgres_data is a persistent named volume
+ollama_data is a persistent named volume
+a database backup has been created
+restore has been tested into a clean local Docker volume
+```
+
+Never commit `.env`, raw Telegram tokens, provider credentials, database dumps,
+or logs containing private user content.
+
 Start the stack:
 
 ```bash
@@ -483,6 +512,95 @@ docker compose down -v
 
 Use `docker compose down -v` carefully. It removes the PostgreSQL and Ollama volumes,
 including users and downloaded models.
+
+### Database Backup
+
+Database backups should include user records, roles, invite metadata, policy
+acceptances, inbound message state, and any future memory or analytics tables.
+They should not include `.env`, local Ollama model caches, or generated logs.
+
+Create a compressed PostgreSQL dump from the running Compose stack:
+
+```bash
+./scripts/backup_database.sh
+```
+
+By default the script writes `backups/botforge-postgres-<timestamp>.dump`.
+The `backups/` directory and `*.dump` files are ignored by git.
+
+To use a different local backup directory:
+
+```bash
+./scripts/backup_database.sh --backup-dir /var/backups/botforge
+```
+
+To target a non-default Compose project, pass `--project-name <name>`.
+
+### Database Restore Test
+
+Practice restores before beta. A simple local restore test is:
+
+```bash
+./scripts/backup_database.sh
+docker compose -p botforge_restore_test up -d postgres
+./scripts/restore_database.sh --project-name botforge_restore_test
+docker compose -p botforge_restore_test exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
+docker compose -p botforge_restore_test down -v
+```
+
+That uses a separate Compose project and volume so the normal local database is
+not overwritten. With no `--backup-file`, the restore script uses the newest
+`*.dump` file from `backups/`.
+
+The restore script is destructive. It restores into the running `postgres`
+service with `pg_restore --clean --if-exists --no-owner`.
+
+After restoring, run a smoke test:
+
+```bash
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
+docker compose logs --tail=100 botforge
+```
+
+Confirm expected users, invites, policy acceptances, and inbound message rows
+are present before trusting the backup procedure.
+
+### Restart And Rollback Basics
+
+For a normal restart, use:
+
+```bash
+docker compose restart botforge
+```
+
+For a code rollback, check out the previous known-good revision, rebuild only
+the bot image, and keep the database volume in place:
+
+```bash
+git checkout <known-good-revision>
+docker compose up -d --build botforge
+docker compose logs -f botforge
+```
+
+If a migration was already applied, restore the latest tested backup into a
+clean PostgreSQL volume instead of editing migration state by hand.
+
+### Secret Rotation
+
+If the Telegram token leaks:
+
+1. Open BotFather and revoke/regenerate the token immediately.
+2. Stop BotForge so the leaked token is no longer used:
+   `docker compose stop botforge`.
+3. Update `TELEGRAM_TOKEN` in the uncommitted `.env`.
+4. Start the bot again with `docker compose up -d botforge`.
+5. Check `docker compose logs --tail=100 botforge` for startup errors.
+6. Search recent commits, PRs, issues, chat logs, and deployment notes for the
+   leaked token. Remove or rotate any copied secret.
+
+If Ollama or future provider credentials leak, rotate them with the provider,
+update `.env`, restart BotForge, and avoid posting the old values in issue
+comments or logs.
 
 ## Persistent Data
 

@@ -18,6 +18,10 @@ DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT = 1000
 DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES = 30
 DEFAULT_MESSAGE_EXPIRATION_HOURS = 24
 DEFAULT_MESSAGE_MAX_RETRIES = 1
+DEFAULT_BOTFORGE_ENV = "development"
+PRODUCTION_ENVS = frozenset({"prod", "production"})
+DEVELOPMENT_DB_PASSWORD = "botforge_dev_password"
+PLACEHOLDER_TELEGRAM_TOKEN = "<telegram_bot_token>"
 
 
 class SettingsError(RuntimeError):
@@ -142,6 +146,7 @@ class Settings(DatabaseSettings):
     message_max_retries: int = DEFAULT_MESSAGE_MAX_RETRIES
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
+    botforge_env: str = DEFAULT_BOTFORGE_ENV
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
@@ -172,6 +177,15 @@ class Settings(DatabaseSettings):
             )
 
         db_port = _parse_db_port(env.get("DB_PORT"))
+        botforge_env = (
+            _clean(env.get("BOTFORGE_ENV")) or DEFAULT_BOTFORGE_ENV
+        ).lower()
+        _validate_production_secrets(
+            botforge_env,
+            telegram_token=required["TELEGRAM_TOKEN"] or "",
+            db_password=required["DB_PASSWORD"] or "",
+        )
+
         return cls(
             telegram_token=required["TELEGRAM_TOKEN"] or "",
             db_host=required["DB_HOST"] or "",
@@ -219,6 +233,7 @@ class Settings(DatabaseSettings):
             training_consent_enabled=_parse_bool(
                 env.get("BOT_TRAINING_CONSENT_ENABLED")
             ),
+            botforge_env=botforge_env,
         )
 
 
@@ -291,6 +306,30 @@ def _parse_bool(value: str | None) -> bool:
     if cleaned is None:
         return False
     return cleaned.lower() in {"1", "true", "yes", "on"}
+
+
+def _validate_production_secrets(
+    botforge_env: str,
+    *,
+    telegram_token: str,
+    db_password: str,
+) -> None:
+    """Reject known development placeholders in production mode."""
+    if botforge_env not in PRODUCTION_ENVS:
+        return
+
+    blocked = []
+    if telegram_token == PLACEHOLDER_TELEGRAM_TOKEN:
+        blocked.append("TELEGRAM_TOKEN placeholder")
+    if db_password == DEVELOPMENT_DB_PASSWORD:
+        blocked.append("DB_PASSWORD development default")
+
+    if blocked:
+        details = ", ".join(blocked)
+        raise SettingsError(
+            "Production configuration cannot use development secrets: "
+            f"{details}."
+        )
 
 
 @lru_cache
