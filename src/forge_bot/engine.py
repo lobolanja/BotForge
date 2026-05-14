@@ -80,6 +80,11 @@ def _resolve_profile(profile: BotProfile | None) -> BotProfile:
     if profile is not None:
         return profile
 
+    return load_default_profile()
+
+
+def load_default_profile() -> BotProfile:
+    """Load the configured bot profile for a runtime AI request."""
     settings = get_settings()
     return load_active_bot_profile(settings.bot_profile, settings.bot_profiles_dir)
 

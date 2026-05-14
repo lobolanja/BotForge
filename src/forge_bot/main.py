@@ -18,6 +18,7 @@ from .message_store import recover_unfinished_messages
 from .router import ask_ia, record_inbound_update
 
 logger = logging.getLogger(__name__)
+MAX_CONCURRENT_UPDATES = 8
 COMMAND_HANDLERS = (
     ("greet", greet),
     ("ping", ping),
@@ -78,8 +79,14 @@ def main() -> None:
 
     log_startup_configuration()
 
-    # This is the central registry for Telegram command handlers.
-    bot = Application.builder().token(settings.telegram_token).build()
+    # Process updates concurrently so in-flight per-user request state can
+    # respond immediately when a user sends a second message while the AI works.
+    bot = (
+        Application.builder()
+        .token(settings.telegram_token)
+        .concurrent_updates(MAX_CONCURRENT_UPDATES)
+        .build()
+    )
 
     recovery = recover_unfinished_messages()
     logger.info(
@@ -102,7 +109,7 @@ def main() -> None:
     bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_ia))
 
     # Log a short startup signal for Docker and local development.
-    logger.info("bot_polling_started")
+    logger.info("bot_polling_started concurrent_updates=%s", MAX_CONCURRENT_UPDATES)
     bot.run_polling()
 
 
