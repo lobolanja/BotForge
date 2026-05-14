@@ -1,6 +1,8 @@
 import pytest
 
 from forge_bot.config import (
+    DEFAULT_AI_MAX_RESPONSE_CHARS,
+    DEFAULT_AI_TIMEOUT_SECONDS,
     DEFAULT_BOT_POLICY_VERSION,
     DEFAULT_BOT_PRIVACY_NOTICE_VERSION,
     DEFAULT_BOT_PROFILE,
@@ -69,5 +71,7 @@ def test_defaults_are_applied() -> None:
     )
     assert settings.message_expiration_hours == DEFAULT_MESSAGE_EXPIRATION_HOURS
     assert settings.message_max_retries == DEFAULT_MESSAGE_MAX_RETRIES
+    assert settings.ai_timeout_seconds == DEFAULT_AI_TIMEOUT_SECONDS
+    assert settings.ai_max_response_chars == DEFAULT_AI_MAX_RESPONSE_CHARS
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled

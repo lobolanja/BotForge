@@ -1,3 +1,4 @@
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,8 @@ from psycopg.rows import dict_row
 
 from .config import get_settings
 from .roles import is_admin_role
+
+logger = logging.getLogger(__name__)
 
 # The time to live for invite tokens, in hours.
 DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
@@ -131,16 +134,16 @@ def conect_db() -> Any | None:
             row_factory=dict_row,
         )
         return connection
-    except psycopg.Error as err:
-        print(f"Error connecting to the database: {err}")
+    except psycopg.Error:
+        logger.exception("database_connection_failed")
         return None
 
 
-def verify_user(telegram_id: int) -> bool:
+def verify_user(telegram_id: int) -> bool | None:
     """Check whether a Telegram user is linked to an internal account."""
     conn = conect_db()
     if not conn:
-        return False
+        return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -148,6 +151,9 @@ def verify_user(telegram_id: int) -> bool:
                 (telegram_id,),
             )
             return cursor.fetchone() is not None
+    except psycopg.Error:
+        logger.exception("verify_user_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 
@@ -165,6 +171,9 @@ def get_user_by_telegram_id(telegram_id: int) -> dict[str, Any] | None:
             )
             user: dict[str, Any] | None = cursor.fetchone()
             return user
+    except psycopg.Error:
+        logger.exception("get_user_by_telegram_id_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 
@@ -178,17 +187,20 @@ def get_user_role_by_telegram_id(telegram_id: int) -> str | None:
     return role if isinstance(role, str) else None
 
 
-def is_admin(telegram_id: int) -> bool:
+def is_admin(telegram_id: int) -> bool | None:
     """Check whether the logged-in Telegram user has the admin role."""
-    return is_admin_role(get_user_role_by_telegram_id(telegram_id))
+    role = get_user_role_by_telegram_id(telegram_id)
+    if role is None:
+        return None
+    return is_admin_role(role)
 
 
-def has_current_policy_acceptance(telegram_id: int) -> bool:
+def has_current_policy_acceptance(telegram_id: int) -> bool | None:
     """Check whether the Telegram user accepted the current required policy."""
     versions = current_policy_versions()
     conn = conect_db()
     if not conn:
-        return False
+        return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -210,6 +222,9 @@ def has_current_policy_acceptance(telegram_id: int) -> bool:
                 ),
             )
             return cursor.fetchone() is not None
+    except psycopg.Error:
+        logger.exception("policy_acceptance_check_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 

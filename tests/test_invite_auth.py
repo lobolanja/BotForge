@@ -42,12 +42,30 @@ async def test_start_without_token_shows_invite_identity_copy(
         "forge_bot.commands.auth.redeem_invite_token",
         redeem_invite_token,
     )
+    monkeypatch.setattr("forge_bot.commands.auth.status_user", lambda telegram_id: None)
 
     await start(update, create_context())
 
     assert not called
     assert update.message.replies == [
         "Welcome to BotForge. Open your invite link to connect your identity."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_start_without_token_reports_already_linked_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = create_update()
+    monkeypatch.setattr(
+        "forge_bot.commands.auth.status_user",
+        lambda telegram_id: {"username": "telegram_123_1", "role": "user"},
+    )
+
+    await start(update, create_context())
+
+    assert update.message.replies == [
+        "Welcome back to BotForge. This Telegram account is already linked."
     ]
 
 

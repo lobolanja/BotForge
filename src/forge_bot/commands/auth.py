@@ -5,6 +5,19 @@ from forge_bot.database import redeem_invite_token, status_user
 
 from .policy import policy_prompt
 
+INVITE_PROMPT = "Welcome to BotForge. Open your invite link to connect your identity."
+ALREADY_LINKED_START = (
+    "Welcome back to BotForge. This Telegram account is already linked."
+)
+REDEMPTION_FAILURE_MESSAGES = {
+    "already_linked": "This Telegram account is already linked.",
+    "expired": "This invite link has expired.",
+    "used": "This invite link has already been used.",
+    "campaign_full": "This campaign invite link is full.",
+    "invalid": "This invite link is invalid.",
+}
+REDEMPTION_UNAVAILABLE = "Invite identity connection is temporarily unavailable."
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
@@ -12,30 +25,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     args = context.args or []
 
-    await update.message.reply_text(
-        "Welcome to BotForge. Open your invite link to connect your identity."
-    )
-
     if not args:
+        user = status_user(update.effective_user.id)
+        if user:
+            await update.message.reply_text(ALREADY_LINKED_START)
+            return
+        await update.message.reply_text(INVITE_PROMPT)
         return
 
-    redemption = redeem_invite_token(args[0], update.effective_user.id)
+    await update.message.reply_text(INVITE_PROMPT)
+    await _reply_to_invite_redemption(update, args[0], update.effective_user.id)
+
+
+async def _reply_to_invite_redemption(
+    update: Update,
+    token: str,
+    telegram_id: int,
+) -> None:
+    if not update.message:
+        return
+
+    redemption = redeem_invite_token(token, telegram_id)
     if redemption.status == "success":
         await update.message.reply_text(f"Invite accepted.\n\n{policy_prompt()}")
-    elif redemption.status == "already_linked":
-        await update.message.reply_text("This Telegram account is already linked.")
-    elif redemption.status == "expired":
-        await update.message.reply_text("This invite link has expired.")
-    elif redemption.status == "used":
-        await update.message.reply_text("This invite link has already been used.")
-    elif redemption.status == "campaign_full":
-        await update.message.reply_text("This campaign invite link is full.")
-    elif redemption.status == "invalid":
-        await update.message.reply_text("This invite link is invalid.")
-    else:
-        await update.message.reply_text(
-            "Invite identity connection is temporarily unavailable."
-        )
+        return
+
+    message = REDEMPTION_FAILURE_MESSAGES.get(
+        redemption.status,
+        REDEMPTION_UNAVAILABLE,
+    )
+    await update.message.reply_text(message)
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

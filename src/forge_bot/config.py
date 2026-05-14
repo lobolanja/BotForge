@@ -18,10 +18,14 @@ DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT = 1000
 DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES = 30
 DEFAULT_MESSAGE_EXPIRATION_HOURS = 24
 DEFAULT_MESSAGE_MAX_RETRIES = 1
+DEFAULT_AI_TIMEOUT_SECONDS = 60
+DEFAULT_AI_MAX_RESPONSE_CHARS = 4000
 DEFAULT_BOTFORGE_ENV = "development"
 PRODUCTION_ENVS = frozenset({"prod", "production"})
 DEVELOPMENT_DB_PASSWORD = "botforge_dev_password"
 PLACEHOLDER_TELEGRAM_TOKEN = "<telegram_bot_token>"
+REQUIRED_DB_SETTINGS = ("DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME")
+REQUIRED_RUNTIME_SETTINGS = ("TELEGRAM_TOKEN", *REQUIRED_DB_SETTINGS)
 
 
 class SettingsError(RuntimeError):
@@ -74,28 +78,14 @@ class DatabaseSettings:
         Raises:
             SettingsError: If a required setting is missing or DB_PORT is invalid.
         """
-        required = {
-            "DB_HOST": _clean(env.get("DB_HOST")),
-            "DB_USER": _clean(env.get("DB_USER")),
-            "DB_PASSWORD": _clean(env.get("DB_PASSWORD")),
-            "DB_NAME": _clean(env.get("DB_NAME")),
-        }
-        missing = [name for name, value in required.items() if value is None]
-        if missing:
-            names = ", ".join(missing)
-            raise SettingsError(
-                f"Missing required settings: {names}. "
-                "Add them to .env or the environment."
-            )
-
-        db_port = _parse_db_port(env.get("DB_PORT"))
+        required = _required_clean_values(env, REQUIRED_DB_SETTINGS)
 
         return cls(
-            db_host=required["DB_HOST"] or "",
-            db_user=required["DB_USER"] or "",
-            db_password=required["DB_PASSWORD"] or "",
-            db_name=required["DB_NAME"] or "",
-            db_port=db_port,
+            db_host=required["DB_HOST"],
+            db_user=required["DB_USER"],
+            db_password=required["DB_PASSWORD"],
+            db_name=required["DB_NAME"],
+            db_port=_parse_db_port(env.get("DB_PORT")),
         )
 
     @property
@@ -144,6 +134,8 @@ class Settings(DatabaseSettings):
     message_processing_stale_minutes: int = DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES
     message_expiration_hours: int = DEFAULT_MESSAGE_EXPIRATION_HOURS
     message_max_retries: int = DEFAULT_MESSAGE_MAX_RETRIES
+    ai_timeout_seconds: int = DEFAULT_AI_TIMEOUT_SECONDS
+    ai_max_response_chars: int = DEFAULT_AI_MAX_RESPONSE_CHARS
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
     botforge_env: str = DEFAULT_BOTFORGE_ENV
@@ -161,35 +153,22 @@ class Settings(DatabaseSettings):
         Raises:
             SettingsError: If a required setting is missing or DB_PORT is invalid.
         """
-        required = {
-            "TELEGRAM_TOKEN": _clean(env.get("TELEGRAM_TOKEN")),
-            "DB_HOST": _clean(env.get("DB_HOST")),
-            "DB_USER": _clean(env.get("DB_USER")),
-            "DB_PASSWORD": _clean(env.get("DB_PASSWORD")),
-            "DB_NAME": _clean(env.get("DB_NAME")),
-        }
-        missing = [name for name, value in required.items() if value is None]
-        if missing:
-            names = ", ".join(missing)
-            raise SettingsError(
-                f"Missing required settings: {names}. "
-                "Add them to .env or the environment."
-            )
+        required = _required_clean_values(env, REQUIRED_RUNTIME_SETTINGS)
 
         db_port = _parse_db_port(env.get("DB_PORT"))
         botforge_env = (_clean(env.get("BOTFORGE_ENV")) or DEFAULT_BOTFORGE_ENV).lower()
         _validate_production_secrets(
             botforge_env,
-            telegram_token=required["TELEGRAM_TOKEN"] or "",
-            db_password=required["DB_PASSWORD"] or "",
+            telegram_token=required["TELEGRAM_TOKEN"],
+            db_password=required["DB_PASSWORD"],
         )
 
         return cls(
-            telegram_token=required["TELEGRAM_TOKEN"] or "",
-            db_host=required["DB_HOST"] or "",
-            db_user=required["DB_USER"] or "",
-            db_password=required["DB_PASSWORD"] or "",
-            db_name=required["DB_NAME"] or "",
+            telegram_token=required["TELEGRAM_TOKEN"],
+            db_host=required["DB_HOST"],
+            db_user=required["DB_USER"],
+            db_password=required["DB_PASSWORD"],
+            db_name=required["DB_NAME"],
             db_port=db_port,
             ollama_host=_clean(env.get("OLLAMA_HOST")) or DEFAULT_OLLAMA_HOST,
             ollama_model=_clean(env.get("OLLAMA_MODEL")) or DEFAULT_OLLAMA_MODEL,
@@ -225,6 +204,14 @@ class Settings(DatabaseSettings):
                 env.get("MESSAGE_MAX_RETRIES"),
                 DEFAULT_MESSAGE_MAX_RETRIES,
             ),
+            ai_timeout_seconds=_parse_positive_int(
+                env.get("AI_TIMEOUT_SECONDS"),
+                DEFAULT_AI_TIMEOUT_SECONDS,
+            ),
+            ai_max_response_chars=_parse_positive_int(
+                env.get("AI_MAX_RESPONSE_CHARS"),
+                DEFAULT_AI_MAX_RESPONSE_CHARS,
+            ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")
             ),
@@ -233,6 +220,22 @@ class Settings(DatabaseSettings):
             ),
             botforge_env=botforge_env,
         )
+
+
+def _required_clean_values(
+    env: Mapping[str, str],
+    names: tuple[str, ...],
+) -> dict[str, str]:
+    values = {name: _clean(env.get(name)) for name in names}
+    missing = [name for name, value in values.items() if value is None]
+    if missing:
+        names_text = ", ".join(missing)
+        raise SettingsError(
+            f"Missing required settings: {names_text}. "
+            "Add them to .env or the environment."
+        )
+
+    return {name: value for name, value in values.items() if value is not None}
 
 
 def _parse_db_port(value: str | None) -> int:
