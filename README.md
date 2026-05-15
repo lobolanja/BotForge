@@ -75,6 +75,13 @@ DB_PORT=5432
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_MODEL=gemma2:2b
 
+LLM_PRIMARY_PROVIDER=ollama
+LLM_FALLBACK_PROVIDER=nvidia
+LLM_FALLBACK_QUEUE_WAIT_SECONDS=100
+NVIDIA_API_KEY=
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
+
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
 ```
@@ -94,6 +101,14 @@ Notes:
   the active profile's `llm_model`. The default is `gemma2:2b`, the small
   Gemma 2 model. If these values drift, Compose can pull one model while the
   bot tries to use another at runtime.
+- `LLM_PRIMARY_PROVIDER=ollama` keeps local inference as the first choice.
+  `LLM_FALLBACK_PROVIDER=nvidia` enables fallback through NVIDIA NIM when
+  Ollama errors or when the lifecycle queue wait exceeds
+  `LLM_FALLBACK_QUEUE_WAIT_SECONDS`.
+- `NVIDIA_BASE_URL` defaults to NVIDIA's OpenAI-compatible hosted NIM endpoint,
+  `https://integrate.api.nvidia.com/v1`. Choose `NVIDIA_MODEL` from the current
+  NVIDIA API Catalog and set `NVIDIA_API_KEY` only in local or deployment
+  secrets, never in git.
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
@@ -297,7 +312,34 @@ When a limit is exceeded, users receive a short friendly message. The bot logs
 the limit name, user id, chat id, timestamp, and small counters only; it does
 not include raw private message text in abuse-limit logs.
 
-## 6. Create The First Invite Link
+## 6. LLM Provider Fallback
+
+BotForge uses a small provider abstraction around model calls. The primary
+provider is Ollama by default. If Ollama is unavailable or returns an error, the
+engine tries the configured fallback provider once and sends only that single
+answer to the user.
+
+The request lifecycle also records how long a message waited before processing
+started. When that wait is greater than `LLM_FALLBACK_QUEUE_WAIT_SECONDS`
+(default: 100), BotForge selects the fallback provider immediately instead of
+starting local inference.
+
+NVIDIA NIM fallback is configured with:
+
+```env
+LLM_FALLBACK_PROVIDER=nvidia
+NVIDIA_API_KEY=<nvidia_api_key>
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
+```
+
+The NVIDIA API Catalog exposes hosted NIM language models through
+`POST /v1/chat/completions` at `https://integrate.api.nvidia.com`. Model names
+and trial terms can change, so confirm the selected model in the catalog before
+using it beyond development. BotForge logs the request id, selected provider,
+fallback reason, and duration; it does not log API keys or raw user messages.
+
+## 7. Create The First Invite Link
 
 BotForge links Telegram users to invited email identities through invite links:
 
@@ -339,7 +381,7 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-## 7. Admin Invite Management
+## 8. Admin Invite Management
 
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
@@ -430,7 +472,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 8. Telegram Smoke Test
+## 9. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
