@@ -1,6 +1,7 @@
 import pytest
 
 from forge_bot.config import (
+    DEFAULT_ADMIN_INVITES_PER_HOUR,
     DEFAULT_AI_MAX_RESPONSE_CHARS,
     DEFAULT_AI_TIMEOUT_SECONDS,
     DEFAULT_BOT_POLICY_VERSION,
@@ -8,11 +9,17 @@ from forge_bot.config import (
     DEFAULT_BOT_PROFILE,
     DEFAULT_BOT_PROFILES_DIR,
     DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
+    DEFAULT_CHAT_MESSAGES_PER_MINUTE,
     DEFAULT_DB_PORT,
+    DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS,
+    DEFAULT_GLOBAL_AI_QUEUE_SIZE,
+    DEFAULT_MAX_MESSAGE_CHARS,
     DEFAULT_MESSAGE_EXPIRATION_HOURS,
     DEFAULT_MESSAGE_MAX_RETRIES,
     DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
     DEFAULT_OLLAMA_MODEL,
+    DEFAULT_USER_AI_REQUESTS_PER_HOUR,
+    DEFAULT_USER_MESSAGES_PER_MINUTE,
     DatabaseSettings,
     Settings,
     SettingsError,
@@ -73,5 +80,34 @@ def test_defaults_are_applied() -> None:
     assert settings.message_max_retries == DEFAULT_MESSAGE_MAX_RETRIES
     assert settings.ai_timeout_seconds == DEFAULT_AI_TIMEOUT_SECONDS
     assert settings.ai_max_response_chars == DEFAULT_AI_MAX_RESPONSE_CHARS
+    assert settings.max_message_chars == DEFAULT_MAX_MESSAGE_CHARS
+    assert settings.user_messages_per_minute == DEFAULT_USER_MESSAGES_PER_MINUTE
+    assert settings.user_ai_requests_per_hour == DEFAULT_USER_AI_REQUESTS_PER_HOUR
+    assert settings.chat_messages_per_minute == DEFAULT_CHAT_MESSAGES_PER_MINUTE
+    assert settings.global_active_ai_requests == DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS
+    assert settings.global_ai_queue_size == DEFAULT_GLOBAL_AI_QUEUE_SIZE
+    assert settings.admin_invites_per_hour == DEFAULT_ADMIN_INVITES_PER_HOUR
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled
+
+
+def test_abuse_limit_settings_are_configurable() -> None:
+    env = valid_env() | {
+        "MAX_MESSAGE_CHARS": "2000",
+        "USER_MESSAGES_PER_MINUTE": "3",
+        "USER_AI_REQUESTS_PER_HOUR": "12",
+        "CHAT_MESSAGES_PER_MINUTE": "18",
+        "GLOBAL_ACTIVE_AI_REQUESTS": "1",
+        "GLOBAL_AI_QUEUE_SIZE": "0",
+        "ADMIN_INVITES_PER_HOUR": "4",
+    }
+
+    settings = Settings.from_env(env)
+
+    assert settings.max_message_chars == 2000
+    assert settings.user_messages_per_minute == 3
+    assert settings.user_ai_requests_per_hour == 12
+    assert settings.chat_messages_per_minute == 18
+    assert settings.global_active_ai_requests == 1
+    assert settings.global_ai_queue_size == 0
+    assert settings.admin_invites_per_hour == 4
