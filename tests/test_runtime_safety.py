@@ -57,6 +57,27 @@ def fake_ollama_client(**kwargs: object) -> SimpleNamespace:
     return SimpleNamespace(chat=lambda **kw: object())
 
 
+def test_nvidia_provider_rejects_non_https_base_url() -> None:
+    with pytest.raises(engine.ProviderConfigurationError, match="HTTPS URL"):
+        engine.NvidiaNimProvider(
+            api_key="secret-key",
+            base_url="file:///tmp/socket",
+            model="nvidia/test-model",
+            timeout_seconds=1,
+        )
+
+
+def test_nvidia_provider_normalizes_https_base_url() -> None:
+    provider = engine.NvidiaNimProvider(
+        api_key="secret-key",
+        base_url="https://example.test/v1/",
+        model="nvidia/test-model",
+        timeout_seconds=1,
+    )
+
+    assert provider._base_url == "https://example.test/v1"
+
+
 @pytest.mark.asyncio
 async def test_ai_timeout_returns_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     async def slow_to_thread(*args: object, **kwargs: object) -> object:

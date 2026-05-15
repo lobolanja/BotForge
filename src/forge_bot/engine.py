@@ -5,6 +5,7 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import ollama
 
@@ -21,6 +22,7 @@ AI_ERROR_FALLBACK = (
     "The AI service is temporarily unavailable. Please try again in a moment."
 )
 FALLBACK_DISABLED_VALUES = {"", "none", "disabled", "off"}
+NVIDIA_ALLOWED_URL_SCHEMES = {"https"}
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -69,7 +71,7 @@ class NvidiaNimProvider:
             )
 
         self._api_key = api_key
-        self._base_url = base_url.rstrip("/")
+        self._base_url = _validated_https_base_url(base_url)
         self._model = model
         self._timeout_seconds = timeout_seconds
 
@@ -99,7 +101,8 @@ class NvidiaNimProvider:
         )
 
         try:
-            with urllib.request.urlopen(
+            # The base URL is normalized by _validated_https_base_url().
+            with urllib.request.urlopen(  # nosec B310
                 request,
                 timeout=self._timeout_seconds,
             ) as response:
@@ -243,6 +246,31 @@ def load_default_profile() -> BotProfile:
 
 def _build_client(host: str, timeout_seconds: int) -> ollama.Client:
     return ollama.Client(host=host, timeout=timeout_seconds)
+
+
+def _validated_https_base_url(base_url: str) -> str:
+    parsed = urlsplit(base_url.strip())
+    if parsed.scheme.lower() not in NVIDIA_ALLOWED_URL_SCHEMES or not parsed.netloc:
+        raise ProviderConfigurationError(
+            "NVIDIA_BASE_URL must be an HTTPS URL with a host."
+        )
+    if parsed.username or parsed.password:
+        raise ProviderConfigurationError(
+            "NVIDIA_BASE_URL must not include credentials."
+        )
+    if parsed.query or parsed.fragment:
+        raise ProviderConfigurationError(
+            "NVIDIA_BASE_URL must not include a query string or fragment."
+        )
+    return urlunsplit(
+        (
+            parsed.scheme.lower(),
+            parsed.netloc,
+            parsed.path.rstrip("/"),
+            "",
+            "",
+        )
+    )
 
 
 def _select_provider(
