@@ -13,6 +13,7 @@ from forge_bot.database import (
 )
 
 from .auth_guard import admin_required
+from .rate_limit_guard import reply_if_admin_invite_limited
 
 
 def parse_campaign_expiration(value: str) -> datetime | None:
@@ -85,6 +86,9 @@ async def campaign_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(
             "Error: Bot username not configured. Please contact the administrator."
         )
+        return
+
+    if await reply_if_admin_invite_limited(update):
         return
 
     try:
