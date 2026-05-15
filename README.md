@@ -278,7 +278,26 @@ file name, MIME type, and size. If a file must be preserved long term, download
 and archive it soon after receipt; a known `file_id` can request a fresh
 Telegram download path later, subject to Telegram Bot API file limits.
 
-## 5. Create The First Invite Link
+## 5. Abuse Prevention And Rate Limits
+
+BotForge applies conservative in-memory limits before expensive AI work starts.
+These limits are meant for beta safety and reset when the bot process restarts:
+
+```env
+MAX_MESSAGE_CHARS=4000
+USER_MESSAGES_PER_MINUTE=6
+USER_AI_REQUESTS_PER_HOUR=60
+CHAT_MESSAGES_PER_MINUTE=30
+GLOBAL_ACTIVE_AI_REQUESTS=2
+GLOBAL_AI_QUEUE_SIZE=20
+ADMIN_INVITES_PER_HOUR=50
+```
+
+When a limit is exceeded, users receive a short friendly message. The bot logs
+the limit name, user id, chat id, timestamp, and small counters only; it does
+not include raw private message text in abuse-limit logs.
+
+## 6. Create The First Invite Link
 
 BotForge links Telegram users to invited email identities through invite links:
 
@@ -320,7 +339,7 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-## 6. Admin Invite Management
+## 7. Admin Invite Management
 
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
@@ -411,7 +430,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 7. Telegram Smoke Test
+## 8. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
