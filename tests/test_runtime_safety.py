@@ -37,6 +37,12 @@ def fake_profile() -> BotProfile:
 def fake_settings(**overrides: object) -> SimpleNamespace:
     values: dict[str, object] = {
         "ollama_host": "http://ollama:11434",
+        "llm_primary_provider": "ollama",
+        "llm_fallback_provider": "nvidia",
+        "llm_fallback_queue_wait_seconds": 100,
+        "nvidia_api_key": "",
+        "nvidia_base_url": "https://integrate.api.nvidia.com/v1",
+        "nvidia_model": "nvidia/test-model",
         "bot_profile": "default_dev",
         "bot_profiles_dir": "bot_profiles",
         "ai_timeout_seconds": 1,
@@ -111,6 +117,106 @@ async def test_ai_response_is_truncated(monkeypatch: pytest.MonkeyPatch) -> None
     result = await engine.answer("Ada", "hello")
 
     assert result == "abc"
+
+
+@pytest.mark.asyncio
+async def test_fallback_provider_answers_when_ollama_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            raise RuntimeError("ollama is down")
+
+    class FallbackProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            return "fallback answer"
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr(
+        engine,
+        "_build_provider",
+        lambda name: FallbackProvider() if name == "nvidia" else FailingProvider(),
+    )
+
+    result = await engine.answer("Ada", "hello", request_id="req-1")
+
+    assert result == "fallback answer"
+
+
+@pytest.mark.asyncio
+async def test_queue_wait_over_threshold_uses_fallback_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    used_providers: list[str] = []
+
+    class FakeProvider:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            used_providers.append(self.name)
+            return f"{self.name} answer"
+
+    monkeypatch.setattr(
+        engine,
+        "get_settings",
+        lambda: fake_settings(llm_fallback_queue_wait_seconds=100),
+    )
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider(name))
+
+    result = await engine.answer("Ada", "hello", queue_wait_seconds=101)
+
+    assert result == "nvidia answer"
+    assert used_providers == ["nvidia"]
+
+
+@pytest.mark.asyncio
+async def test_queue_wait_under_threshold_uses_primary_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    used_providers: list[str] = []
+
+    class FakeProvider:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            used_providers.append(self.name)
+            return f"{self.name} answer"
+
+    monkeypatch.setattr(
+        engine,
+        "get_settings",
+        lambda: fake_settings(llm_fallback_queue_wait_seconds=100),
+    )
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider(name))
+
+    result = await engine.answer("Ada", "hello", queue_wait_seconds=99)
+
+    assert result == "ollama answer"
+    assert used_providers == ["ollama"]
+
+
+@pytest.mark.asyncio
+async def test_missing_nvidia_api_key_fails_only_when_fallback_is_needed(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+
+    with caplog.at_level(logging.ERROR):
+        result = await engine.answer("Ada", "hello", queue_wait_seconds=101)
+
+    assert result == engine.AI_ERROR_FALLBACK
+    assert "NVIDIA_API_KEY" in caplog.text
 
 
 @pytest.mark.asyncio

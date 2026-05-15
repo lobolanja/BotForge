@@ -113,8 +113,14 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             chat_id=update.effective_chat.id, action="typing"
         )
 
-        # Delegate prompt assembly and Ollama communication to the engine module.
-        answer = await engine.answer(user, message, profile=active_profile)
+        # Delegate prompt assembly and LLM provider selection to the engine module.
+        answer = await engine.answer(
+            user,
+            message,
+            profile=active_profile,
+            request_id=active_request.request_id,
+            queue_wait_seconds=active_request.queue_wait_seconds,
+        )
 
         # Send the generated answer back into the same chat.
         await update.message.reply_text(answer)

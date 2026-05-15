@@ -168,7 +168,13 @@ async def test_request_state_is_cleared_after_success(
     monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
     monkeypatch.setattr(engine, "load_default_profile", fake_profile)
 
-    async def answer(user: str, msg: str, profile: BotProfile | None = None) -> str:
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del profile, kwargs
         return f"done for {user}"
 
     monkeypatch.setattr(engine, "answer", answer)
@@ -207,7 +213,13 @@ async def test_request_state_is_cleared_after_exception(
     )
     monkeypatch.setattr(engine, "load_default_profile", fake_profile)
 
-    async def answer(user: str, msg: str, profile: BotProfile | None = None) -> str:
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
         raise RuntimeError("boom")
 
     monkeypatch.setattr(engine, "answer", answer)
@@ -243,7 +255,13 @@ async def test_message_above_max_length_is_ignored_before_ai(
         lambda update_id: marked_ignored.append(update_id),
     )
 
-    async def answer(user: str, msg: str, profile: BotProfile | None = None) -> str:
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, profile, kwargs
         answered.append(msg)
         return "should not happen"
 

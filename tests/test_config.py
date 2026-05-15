@@ -13,10 +13,15 @@ from forge_bot.config import (
     DEFAULT_DB_PORT,
     DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS,
     DEFAULT_GLOBAL_AI_QUEUE_SIZE,
+    DEFAULT_LLM_FALLBACK_PROVIDER,
+    DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS,
+    DEFAULT_LLM_PRIMARY_PROVIDER,
     DEFAULT_MAX_MESSAGE_CHARS,
     DEFAULT_MESSAGE_EXPIRATION_HOURS,
     DEFAULT_MESSAGE_MAX_RETRIES,
     DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
+    DEFAULT_NVIDIA_BASE_URL,
+    DEFAULT_NVIDIA_MODEL,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_USER_AI_REQUESTS_PER_HOUR,
     DEFAULT_USER_MESSAGES_PER_MINUTE,
@@ -66,6 +71,14 @@ def test_defaults_are_applied() -> None:
 
     assert settings.db_port == DEFAULT_DB_PORT
     assert settings.ollama_model == DEFAULT_OLLAMA_MODEL
+    assert settings.llm_primary_provider == DEFAULT_LLM_PRIMARY_PROVIDER
+    assert settings.llm_fallback_provider == DEFAULT_LLM_FALLBACK_PROVIDER
+    assert settings.llm_fallback_queue_wait_seconds == (
+        DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS
+    )
+    assert settings.nvidia_api_key == ""
+    assert settings.nvidia_base_url == DEFAULT_NVIDIA_BASE_URL
+    assert settings.nvidia_model == DEFAULT_NVIDIA_MODEL
     assert settings.bot_profile == DEFAULT_BOT_PROFILE
     assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR
     assert settings.bot_policy_version == DEFAULT_BOT_POLICY_VERSION
@@ -111,3 +124,23 @@ def test_abuse_limit_settings_are_configurable() -> None:
     assert settings.global_active_ai_requests == 1
     assert settings.global_ai_queue_size == 0
     assert settings.admin_invites_per_hour == 4
+
+
+def test_llm_fallback_settings_are_configurable() -> None:
+    env = valid_env() | {
+        "LLM_PRIMARY_PROVIDER": "OLLAMA",
+        "LLM_FALLBACK_PROVIDER": "NVIDIA",
+        "LLM_FALLBACK_QUEUE_WAIT_SECONDS": "42",
+        "NVIDIA_API_KEY": "secret-key",
+        "NVIDIA_BASE_URL": "https://example.test/v1",
+        "NVIDIA_MODEL": "nvidia/example-model",
+    }
+
+    settings = Settings.from_env(env)
+
+    assert settings.llm_primary_provider == "ollama"
+    assert settings.llm_fallback_provider == "nvidia"
+    assert settings.llm_fallback_queue_wait_seconds == 42
+    assert settings.nvidia_api_key == "secret-key"
+    assert settings.nvidia_base_url == "https://example.test/v1"
+    assert settings.nvidia_model == "nvidia/example-model"
