@@ -9,6 +9,11 @@ from dotenv import load_dotenv
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma3:4b"
+DEFAULT_LLM_PRIMARY_PROVIDER = "ollama"
+DEFAULT_LLM_FALLBACK_PROVIDER = "nvidia"
+DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS = 100
+DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+DEFAULT_NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
@@ -131,6 +136,12 @@ class Settings(DatabaseSettings):
     telegram_token: str = ""
     ollama_host: str = DEFAULT_OLLAMA_HOST
     ollama_model: str = DEFAULT_OLLAMA_MODEL
+    llm_primary_provider: str = DEFAULT_LLM_PRIMARY_PROVIDER
+    llm_fallback_provider: str = DEFAULT_LLM_FALLBACK_PROVIDER
+    llm_fallback_queue_wait_seconds: int = DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = DEFAULT_NVIDIA_BASE_URL
+    nvidia_model: str = DEFAULT_NVIDIA_MODEL
     bot_profile: str = DEFAULT_BOT_PROFILE
     bot_profiles_dir: str = DEFAULT_BOT_PROFILES_DIR
     bot_policy_version: str = DEFAULT_BOT_POLICY_VERSION
@@ -186,6 +197,22 @@ class Settings(DatabaseSettings):
             db_port=db_port,
             ollama_host=_clean(env.get("OLLAMA_HOST")) or DEFAULT_OLLAMA_HOST,
             ollama_model=_clean(env.get("OLLAMA_MODEL")) or DEFAULT_OLLAMA_MODEL,
+            llm_primary_provider=(
+                _clean(env.get("LLM_PRIMARY_PROVIDER")) or DEFAULT_LLM_PRIMARY_PROVIDER
+            ).lower(),
+            llm_fallback_provider=(
+                _clean(env.get("LLM_FALLBACK_PROVIDER"))
+                or DEFAULT_LLM_FALLBACK_PROVIDER
+            ).lower(),
+            llm_fallback_queue_wait_seconds=_parse_positive_int(
+                env.get("LLM_FALLBACK_QUEUE_WAIT_SECONDS"),
+                DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS,
+            ),
+            nvidia_api_key=_clean(env.get("NVIDIA_API_KEY")) or "",
+            nvidia_base_url=(
+                _clean(env.get("NVIDIA_BASE_URL")) or DEFAULT_NVIDIA_BASE_URL
+            ),
+            nvidia_model=_clean(env.get("NVIDIA_MODEL")) or DEFAULT_NVIDIA_MODEL,
             bot_profile=_clean(env.get("BOT_PROFILE")) or DEFAULT_BOT_PROFILE,
             bot_profiles_dir=(
                 _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
