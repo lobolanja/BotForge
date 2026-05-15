@@ -119,6 +119,7 @@ async def test_long_message_is_rejected_before_active_request_waiting_message(
         provider="ollama",
     )
     update = fake_update(update_id=2003, text="too long")
+    marked_ignored: list[int] = []
 
     assert active is not None
 
@@ -132,10 +133,16 @@ async def test_long_message_is_rejected_before_active_request_waiting_message(
         "persist_update",
         lambda update: {"status": "persisted"},
     )
+    monkeypatch.setattr(
+        router,
+        "mark_ignored",
+        lambda update_id: marked_ignored.append(update_id),
+    )
 
     await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
 
     assert update.message.replies == [MESSAGE_TOO_LONG_MESSAGE]
+    assert marked_ignored == [2003]
 
 
 @pytest.mark.asyncio
