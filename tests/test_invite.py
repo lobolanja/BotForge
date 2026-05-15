@@ -6,9 +6,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from helpers import make_settings
 
 from forge_bot.commands.invite import invite
 from forge_bot.database import InviteToken
+from forge_bot.rate_limits import ADMIN_INVITE_RATE_LIMIT_MESSAGE, AbuseLimiter
 
 
 class FakeMessage:
@@ -22,6 +24,7 @@ class FakeMessage:
 def create_update(user_id: int) -> Any:
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=789),
         message=FakeMessage(),
     )
 
@@ -46,6 +49,14 @@ def admin_patches():
         ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "forge_bot.commands.rate_limit_guard.abuse_limiter",
+        AbuseLimiter(make_settings),
+    )
 
 
 @pytest.fixture
@@ -178,6 +189,22 @@ async def test_invite_token_creation_failure(admin_patches) -> None:
         await invite(update, create_context(args=["user", "person@example.com"]))
     assert "Error" in update.message.replies[0]
     assert "could not generate" in update.message.replies[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_invite_rate_limited_for_admins(admin_patches, monkeypatch) -> None:
+    update = create_update(user_id=123)
+    limiter = AbuseLimiter(lambda: make_settings(admin_invites_per_hour=1))
+    assert limiter.check_admin_invite(user_id=123, chat_id=789).allowed
+    monkeypatch.setattr("forge_bot.commands.rate_limit_guard.abuse_limiter", limiter)
+
+    with patch(
+        "forge_bot.commands.invite.get_user_by_telegram_id",
+        return_value={"id": 1},
+    ):
+        await invite(update, create_context(args=["user", "person@example.com"]))
+
+    assert update.message.replies == [ADMIN_INVITE_RATE_LIMIT_MESSAGE]
 
 
 @pytest.mark.asyncio

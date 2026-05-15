@@ -6,12 +6,14 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from helpers import make_settings
 
 from forge_bot.commands.campaign_invite import (
     campaign_invite,
     parse_campaign_expiration,
 )
 from forge_bot.database import InviteToken
+from forge_bot.rate_limits import ADMIN_INVITE_RATE_LIMIT_MESSAGE, AbuseLimiter
 
 
 class FakeMessage:
@@ -25,6 +27,7 @@ class FakeMessage:
 def create_update(user_id: int) -> Any:
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=789),
         message=FakeMessage(),
     )
 
@@ -50,6 +53,14 @@ def admin_patches():
         ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "forge_bot.commands.rate_limit_guard.abuse_limiter",
+        AbuseLimiter(make_settings),
+    )
 
 
 @pytest.fixture
@@ -170,6 +181,28 @@ async def test_campaign_invite_user_role_success(
     assert "https://t.me/test_bot?start=" in response
     assert "Role: user" in response
     assert "Max uses: 100" in response
+
+
+@pytest.mark.asyncio
+async def test_campaign_invite_rate_limited_for_admins(
+    admin_patches,
+    monkeypatch,
+) -> None:
+    update = create_update(user_id=123)
+    limiter = AbuseLimiter(lambda: make_settings(admin_invites_per_hour=1))
+    assert limiter.check_admin_invite(user_id=123, chat_id=789).allowed
+    monkeypatch.setattr("forge_bot.commands.rate_limit_guard.abuse_limiter", limiter)
+
+    with patch(
+        "forge_bot.commands.campaign_invite.get_user_by_telegram_id",
+        return_value={"id": 1},
+    ):
+        await campaign_invite(
+            update,
+            create_context(args=["user", "2026-06-30", "100"]),
+        )
+
+    assert update.message.replies == [ADMIN_INVITE_RATE_LIMIT_MESSAGE]
 
 
 @pytest.mark.asyncio

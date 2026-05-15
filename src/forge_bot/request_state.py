@@ -7,7 +7,8 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 REQUEST_WAITING_MESSAGE = (
-    "Todavia estoy procesando tu mensaje anterior. En cuanto termine podre seguir."
+    "I am still processing your previous message. "
+    "I will be able to continue once it finishes."
 )
 
 

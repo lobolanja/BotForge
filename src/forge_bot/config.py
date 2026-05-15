@@ -20,6 +20,13 @@ DEFAULT_MESSAGE_EXPIRATION_HOURS = 24
 DEFAULT_MESSAGE_MAX_RETRIES = 1
 DEFAULT_AI_TIMEOUT_SECONDS = 60
 DEFAULT_AI_MAX_RESPONSE_CHARS = 4000
+DEFAULT_MAX_MESSAGE_CHARS = 4000
+DEFAULT_USER_MESSAGES_PER_MINUTE = 6
+DEFAULT_USER_AI_REQUESTS_PER_HOUR = 60
+DEFAULT_CHAT_MESSAGES_PER_MINUTE = 30
+DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS = 2
+DEFAULT_GLOBAL_AI_QUEUE_SIZE = 20
+DEFAULT_ADMIN_INVITES_PER_HOUR = 50
 DEFAULT_BOTFORGE_ENV = "development"
 PRODUCTION_ENVS = frozenset({"prod", "production"})
 DEVELOPMENT_DB_PASSWORD = "botforge_dev_password"
@@ -136,6 +143,13 @@ class Settings(DatabaseSettings):
     message_max_retries: int = DEFAULT_MESSAGE_MAX_RETRIES
     ai_timeout_seconds: int = DEFAULT_AI_TIMEOUT_SECONDS
     ai_max_response_chars: int = DEFAULT_AI_MAX_RESPONSE_CHARS
+    max_message_chars: int = DEFAULT_MAX_MESSAGE_CHARS
+    user_messages_per_minute: int = DEFAULT_USER_MESSAGES_PER_MINUTE
+    user_ai_requests_per_hour: int = DEFAULT_USER_AI_REQUESTS_PER_HOUR
+    chat_messages_per_minute: int = DEFAULT_CHAT_MESSAGES_PER_MINUTE
+    global_active_ai_requests: int = DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS
+    global_ai_queue_size: int = DEFAULT_GLOBAL_AI_QUEUE_SIZE
+    admin_invites_per_hour: int = DEFAULT_ADMIN_INVITES_PER_HOUR
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
     botforge_env: str = DEFAULT_BOTFORGE_ENV
@@ -211,6 +225,34 @@ class Settings(DatabaseSettings):
             ai_max_response_chars=_parse_positive_int(
                 env.get("AI_MAX_RESPONSE_CHARS"),
                 DEFAULT_AI_MAX_RESPONSE_CHARS,
+            ),
+            max_message_chars=_parse_positive_int(
+                env.get("MAX_MESSAGE_CHARS"),
+                DEFAULT_MAX_MESSAGE_CHARS,
+            ),
+            user_messages_per_minute=_parse_positive_int(
+                env.get("USER_MESSAGES_PER_MINUTE"),
+                DEFAULT_USER_MESSAGES_PER_MINUTE,
+            ),
+            user_ai_requests_per_hour=_parse_positive_int(
+                env.get("USER_AI_REQUESTS_PER_HOUR"),
+                DEFAULT_USER_AI_REQUESTS_PER_HOUR,
+            ),
+            chat_messages_per_minute=_parse_positive_int(
+                env.get("CHAT_MESSAGES_PER_MINUTE"),
+                DEFAULT_CHAT_MESSAGES_PER_MINUTE,
+            ),
+            global_active_ai_requests=_parse_positive_int(
+                env.get("GLOBAL_ACTIVE_AI_REQUESTS"),
+                DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS,
+            ),
+            global_ai_queue_size=_parse_non_negative_int(
+                env.get("GLOBAL_AI_QUEUE_SIZE"),
+                DEFAULT_GLOBAL_AI_QUEUE_SIZE,
+            ),
+            admin_invites_per_hour=_parse_positive_int(
+                env.get("ADMIN_INVITES_PER_HOUR"),
+                DEFAULT_ADMIN_INVITES_PER_HOUR,
             ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")

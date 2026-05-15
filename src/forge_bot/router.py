@@ -13,6 +13,7 @@ from .message_store import (
     persist_inbound_message,
     persist_update,
 )
+from .rate_limits import LimitDecision, abuse_limiter
 from .request_state import REQUEST_WAITING_MESSAGE, request_state
 
 
@@ -56,6 +57,12 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if current_status == "processing":
         return
 
+    message = update.message.text or ""
+    limit_decision = _first_rejected_limit(update, message)
+    if limit_decision:
+        await _ignore_with_reply(update, limit_decision.message)
+        return
+
     active_profile = engine.load_default_profile()
     active_request = await request_state.try_start(
         user_id=update.effective_user.id,
@@ -64,8 +71,28 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         provider=active_profile.llm_provider,
     )
     if active_request is None:
-        mark_ignored(update.update_id)
-        await update.message.reply_text(REQUEST_WAITING_MESSAGE)
+        await _ignore_with_reply(update, REQUEST_WAITING_MESSAGE)
+        return
+
+    ai_lease = await abuse_limiter.acquire_ai_request(
+        user_id=update.effective_user.id,
+        chat_id=update.effective_chat.id,
+    )
+    if isinstance(ai_lease, LimitDecision):
+        await _finish_ignored_request(
+            update, active_request.request_id, ai_lease.message
+        )
+        return
+
+    ai_decision = abuse_limiter.check_user_ai_request(
+        user_id=update.effective_user.id,
+        chat_id=update.effective_chat.id,
+    )
+    if not ai_decision.allowed:
+        await ai_lease.release()
+        await _finish_ignored_request(
+            update, active_request.request_id, ai_decision.message
+        )
         return
 
     finished_status = "failed"
@@ -78,8 +105,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if claimed is None:
             return
 
-        # Extract the current Telegram message and the visible user name.
-        message = update.message.text or ""
+        # Extract the visible user name.
         user = update.effective_user.first_name
 
         # Show Telegram's typing indicator while the LLM response is generated.
@@ -100,8 +126,46 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "Sorry, I could not finish that message. It has been stored for review."
         )
     finally:
+        await ai_lease.release()
         await request_state.finish(
             user_id=update.effective_user.id,
             request_id=active_request.request_id,
             status=finished_status,
+        )
+
+
+def _first_rejected_limit(update: Update, message: str) -> LimitDecision | None:
+    if not update.effective_user or not update.effective_chat:
+        return None
+
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    decision = abuse_limiter.check_message_length(
+        user_id=user_id,
+        chat_id=chat_id,
+        text=message,
+    )
+    if decision.allowed:
+        decision = abuse_limiter.check_message_rate(user_id=user_id, chat_id=chat_id)
+    return None if decision.allowed else decision
+
+
+async def _ignore_with_reply(update: Update, message: str) -> None:
+    if update.update_id is not None:
+        mark_ignored(update.update_id)
+    if update.message:
+        await update.message.reply_text(message)
+
+
+async def _finish_ignored_request(
+    update: Update,
+    request_id: str,
+    message: str,
+) -> None:
+    await _ignore_with_reply(update, message)
+    if update.effective_user:
+        await request_state.finish(
+            user_id=update.effective_user.id,
+            request_id=request_id,
+            status="ignored",
         )

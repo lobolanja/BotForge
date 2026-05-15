@@ -12,6 +12,7 @@ from forge_bot.database import (
 )
 
 from .auth_guard import admin_required
+from .rate_limit_guard import reply_if_admin_invite_limited
 
 
 @admin_required
@@ -70,6 +71,9 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             "Error: Bot username not configured. Please contact the administrator."
         )
+        return
+
+    if await reply_if_admin_invite_limited(update):
         return
 
     token_result = create_invite_token(

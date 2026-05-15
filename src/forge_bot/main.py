@@ -50,7 +50,10 @@ def log_startup_configuration() -> None:
     logger.info(
         "startup_config env=%s db_host=%s db_port=%s db_name=%s "
         "ollama_host=%s ollama_model=%s bot_profile=%s ai_timeout_seconds=%s "
-        "ai_max_response_chars=%s",
+        "ai_max_response_chars=%s max_message_chars=%s "
+        "user_messages_per_minute=%s user_ai_requests_per_hour=%s "
+        "chat_messages_per_minute=%s global_active_ai_requests=%s "
+        "global_ai_queue_size=%s admin_invites_per_hour=%s",
         settings.botforge_env,
         settings.db_host,
         settings.db_port,
@@ -60,6 +63,13 @@ def log_startup_configuration() -> None:
         settings.bot_profile,
         settings.ai_timeout_seconds,
         settings.ai_max_response_chars,
+        settings.max_message_chars,
+        settings.user_messages_per_minute,
+        settings.user_ai_requests_per_hour,
+        settings.chat_messages_per_minute,
+        settings.global_active_ai_requests,
+        settings.global_ai_queue_size,
+        settings.admin_invites_per_hour,
     )
 
 

@@ -3,10 +3,12 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+from helpers import make_settings
 
 from forge_bot import engine, router
 from forge_bot.bot_profile import BotProfile
 from forge_bot.commands import auth_guard
+from forge_bot.rate_limits import MESSAGE_TOO_LONG_MESSAGE, AbuseLimiter
 from forge_bot.request_state import REQUEST_WAITING_MESSAGE, UserRequestState
 
 
@@ -62,6 +64,11 @@ def authorize_user(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(router, "abuse_limiter", AbuseLimiter(make_settings))
+
+
 @pytest.mark.asyncio
 async def test_second_message_while_active_receives_waiting_message(
     monkeypatch: pytest.MonkeyPatch,
@@ -96,6 +103,39 @@ async def test_second_message_while_active_receives_waiting_message(
 
     assert update.message.replies == [REQUEST_WAITING_MESSAGE]
     assert marked_ignored == [2002]
+
+
+@pytest.mark.asyncio
+async def test_long_message_is_rejected_before_active_request_waiting_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    monkeypatch.setattr(router, "request_state", state)
+    active = await state.try_start(
+        user_id=123,
+        chat_id=456,
+        received_at=datetime.now(timezone.utc),
+        provider="ollama",
+    )
+    update = fake_update(update_id=2003, text="too long")
+
+    assert active is not None
+
+    monkeypatch.setattr(
+        router,
+        "abuse_limiter",
+        AbuseLimiter(lambda: make_settings(max_message_chars=3)),
+    )
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == [MESSAGE_TOO_LONG_MESSAGE]
 
 
 @pytest.mark.asyncio
@@ -169,3 +209,41 @@ async def test_request_state_is_cleared_after_exception(
 
     assert failed == [(4004, "RuntimeError")]
     assert await state.active_for_user(123) is None
+
+
+@pytest.mark.asyncio
+async def test_message_above_max_length_is_ignored_before_ai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    update = fake_update(update_id=5005, text="too long")
+    marked_ignored: list[int] = []
+    answered: list[str] = []
+
+    monkeypatch.setattr(
+        router,
+        "abuse_limiter",
+        AbuseLimiter(lambda: make_settings(max_message_chars=3)),
+    )
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(
+        router,
+        "mark_ignored",
+        lambda update_id: marked_ignored.append(update_id),
+    )
+
+    async def answer(user: str, msg: str, profile: BotProfile | None = None) -> str:
+        answered.append(msg)
+        return "should not happen"
+
+    monkeypatch.setattr(engine, "answer", answer)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == [MESSAGE_TOO_LONG_MESSAGE]
+    assert marked_ignored == [5005]
+    assert answered == []
