@@ -22,6 +22,7 @@ The beta roadmap is tracked in GitHub issues:
 - [Recommended task order](tasks/README.md)
 - [Product vision and user stories](tasks/product-vision-user-stories.md)
 - [Customer journeys](tasks/customer-journeys.md)
+- [Beta release checklist](docs/beta-release-checklist.md)
 - [Privacy and retention inventory](docs/privacy-and-retention.md)
 
 ## Runtime Architecture
@@ -703,6 +704,10 @@ python -m forge_bot.main
 
 Run checks after installing development dependencies.
 
+The full beta release gate, including manual Docker, invite, privacy, restart,
+backup/restore, rollback, and sign-off steps, lives in
+[docs/beta-release-checklist.md](docs/beta-release-checklist.md).
+
 Code quality checks (CI: `lint.yml`):
 
 ```bash
@@ -723,8 +728,9 @@ python -m pytest
 
 ## Current Limitations
 
-- Account privacy controls such as `/privacy`, `/memory_clear`, and
-  `/delete_my_data` are planned as explicit commands.
+- Conversation memory tables are not implemented yet. `/memory_clear` is wired
+  as a stable command hook and will clear those records when memory storage is
+  added.
 - Telegram updates that were never delivered to the bot and are older than
   Telegram's pending-update retention window cannot be recovered.
 - The default AI profile uses `gemma2:2b`. Change the active profile's
