@@ -1,5 +1,8 @@
 import logging
+from dataclasses import dataclass
+from typing import Any
 
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from .bot_profile import BotProfileError, load_active_bot_profile
@@ -14,11 +17,18 @@ from .commands.time import time
 from .commands.translate import translate
 from .commands.unknown import unknown_command
 from .config import SettingsError, get_settings
-from .message_store import recover_unfinished_messages
+from .message_store import (
+    fail_queued_message,
+    fail_unrecoverable_queued_messages,
+    list_recoverable_queued_messages,
+    mark_failed,
+    recover_unfinished_messages,
+)
 from .router import ask_ia, record_inbound_update
 
 logger = logging.getLogger(__name__)
 MAX_CONCURRENT_UPDATES = 8
+RECOVERY_BATCH_SIZE = 100
 COMMAND_HANDLERS = (
     ("greet", greet),
     ("ping", ping),
@@ -34,6 +44,13 @@ COMMAND_HANDLERS = (
     ("invite", invite),
     ("campaign_invite", campaign_invite),
 )
+
+
+@dataclass(frozen=True)
+class StartupQueueDrainSummary:
+    replayed: int
+    failed_unrecoverable: int
+    failed_replay: int
 
 
 def setup_logging() -> None:
@@ -73,6 +90,79 @@ def log_startup_configuration() -> None:
     )
 
 
+async def recover_and_drain_queued_messages(application: Any) -> None:
+    """Recover unfinished rows and replay queued Telegram updates after startup."""
+    recovery = recover_unfinished_messages()
+    logger.info(
+        "inbound_message_recovery retried=%s expired=%s failed=%s",
+        recovery.retried,
+        recovery.expired,
+        recovery.failed,
+    )
+
+    drain = await drain_recovered_queued_messages(application)
+    logger.info(
+        "inbound_message_recovery_drain replayed=%s failed_unrecoverable=%s "
+        "failed_replay=%s",
+        drain.replayed,
+        drain.failed_unrecoverable,
+        drain.failed_replay,
+    )
+
+
+async def drain_recovered_queued_messages(application: Any) -> StartupQueueDrainSummary:
+    """Replay queued text messages or fail rows that cannot be safely replayed."""
+    failed_unrecoverable = fail_unrecoverable_queued_messages(
+        "Queued message cannot be reconstructed during startup recovery"
+    )
+    replayed = 0
+    failed_replay = 0
+    seen_update_ids: set[int] = set()
+
+    while True:
+        queued_messages = list_recoverable_queued_messages(limit=RECOVERY_BATCH_SIZE)
+        queued_messages = [
+            message
+            for message in queued_messages
+            if message.telegram_update_id not in seen_update_ids
+        ]
+        if not queued_messages:
+            break
+
+        for message in queued_messages:
+            seen_update_ids.add(message.telegram_update_id)
+            try:
+                if message.raw_update is None:
+                    raise ValueError("missing raw update")
+                update = Update.de_json(message.raw_update, application.bot)
+                await application.process_update(update)
+                replayed += 1
+            except Exception as exc:
+                logger.exception(
+                    "inbound_message_recovery_replay_failed "
+                    "telegram_update_id=%s error=%s",
+                    message.telegram_update_id,
+                    type(exc).__name__,
+                )
+                mark_failed(
+                    message.telegram_update_id,
+                    "Startup recovery replay failed",
+                )
+                failed_replay += 1
+                continue
+
+            fail_queued_message(
+                message.telegram_update_id,
+                "Startup recovery did not claim queued message",
+            )
+
+    return StartupQueueDrainSummary(
+        replayed=replayed,
+        failed_unrecoverable=failed_unrecoverable,
+        failed_replay=failed_replay,
+    )
+
+
 def main() -> None:
     """Start the Telegram bot after validating shared and bot-specific config."""
     setup_logging()
@@ -95,15 +185,8 @@ def main() -> None:
         Application.builder()
         .token(settings.telegram_token)
         .concurrent_updates(MAX_CONCURRENT_UPDATES)
+        .post_init(recover_and_drain_queued_messages)
         .build()
-    )
-
-    recovery = recover_unfinished_messages()
-    logger.info(
-        "inbound_message_recovery retried=%s expired=%s failed=%s",
-        recovery.retried,
-        recovery.expired,
-        recovery.failed,
     )
 
     # Persist supported messages before command or AI handlers do expensive work.

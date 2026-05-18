@@ -42,6 +42,12 @@ class RecoverySummary:
     failed: int
 
 
+@dataclass(frozen=True)
+class QueuedInboundMessage:
+    telegram_update_id: int
+    raw_update: dict[str, Any] | None
+
+
 def normalize_update(update: Update) -> InboundMessage | None:
     """Return queryable inbound message fields for supported Telegram updates."""
     message = update.message
@@ -320,6 +326,74 @@ def recover_unfinished_messages() -> RecoverySummary:
         return RecoverySummary(retried=0, expired=0, failed=0)
     finally:
         conn.close()
+
+
+def list_recoverable_queued_messages(*, limit: int = 100) -> list[QueuedInboundMessage]:
+    """Return queued text updates that can be replayed through Telegram handlers."""
+    conn = conect_db()
+    if not conn:
+        return []
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT telegram_update_id, raw_update
+                FROM inbound_messages
+                WHERE status = 'queued'
+                  AND message_type = 'text'
+                  AND raw_update IS NOT NULL
+                ORDER BY created_at ASC, id ASC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cursor.fetchall()
+            return [
+                QueuedInboundMessage(
+                    telegram_update_id=int(row["telegram_update_id"]),
+                    raw_update=row["raw_update"],
+                )
+                for row in rows
+            ]
+    except psycopg.Error:
+        return []
+    finally:
+        conn.close()
+
+
+def fail_unrecoverable_queued_messages(reason: str) -> int:
+    """Fail queued rows that cannot be reconstructed into Telegram updates."""
+    return _execute(
+        """
+        UPDATE inbound_messages
+        SET processing_finished_at = CURRENT_TIMESTAMP,
+            failed_at = CURRENT_TIMESTAMP,
+            failure_reason = %s,
+            status = 'failed',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'queued'
+          AND (message_type <> 'text' OR raw_update IS NULL)
+        """,
+        (reason[:500],),
+    )
+
+
+def fail_queued_message(telegram_update_id: int, reason: str) -> int:
+    """Fail a message only if it is still queued."""
+    return _execute(
+        """
+        UPDATE inbound_messages
+        SET processing_finished_at = CURRENT_TIMESTAMP,
+            failed_at = CURRENT_TIMESTAMP,
+            failure_reason = %s,
+            status = 'failed',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_update_id = %s
+          AND status = 'queued'
+        """,
+        (reason[:500], telegram_update_id),
+    )
 
 
 def _set_status(
