@@ -13,6 +13,7 @@ from .commands.help import help_command
 from .commands.invite import invite
 from .commands.ping import ping
 from .commands.policy import accept_policy, decline_policy, policy
+from .commands.privacy import delete_my_data, memory_clear, privacy
 from .commands.time import time
 from .commands.translate import translate
 from .commands.unknown import unknown_command
@@ -41,6 +42,9 @@ COMMAND_HANDLERS = (
     ("policy", policy),
     ("accept_policy", accept_policy),
     ("decline_policy", decline_policy),
+    ("privacy", privacy),
+    ("memory_clear", memory_clear),
+    ("delete_my_data", delete_my_data),
     ("invite", invite),
     ("campaign_invite", campaign_invite),
 )

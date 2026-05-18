@@ -31,6 +31,9 @@ async def test_help_hides_admin_invite_for_non_admin(
     await help_command(update, SimpleNamespace())
 
     assert "/status - Verifica tu identidad vinculada" in update.message.replies[0]
+    assert "/privacy - Ver que datos guarda BotForge" in update.message.replies[0]
+    assert "/memory_clear - Borrar memoria" in update.message.replies[0]
+    assert "/delete_my_data - Solicitar borrado" in update.message.replies[0]
     assert "/invite" not in update.message.replies[0]
 
 
