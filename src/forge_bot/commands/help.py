@@ -21,6 +21,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/policy - Muestra la politica de uso\n"
         "/accept_policy - Aceptar la politica de uso\n"
         "/decline_policy - Rechazar la politica de uso\n"
+        "/privacy - Ver que datos guarda BotForge\n"
+        "/memory_clear - Borrar memoria de personalizacion\n"
+        "/delete_my_data - Solicitar borrado de tus datos\n"
     )
     if admin:
         help_text += (

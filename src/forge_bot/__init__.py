@@ -3,6 +3,7 @@ from .commands.campaign_invite import campaign_invite
 from .commands.greet import greet
 from .commands.help import help_command
 from .commands.ping import ping
+from .commands.privacy import delete_my_data, memory_clear, privacy
 from .commands.time import time
 from .commands.translate import translate
 from .commands.unknown import unknown_command
@@ -19,5 +20,8 @@ __all__ = [
     "time",
     "translate",
     "ping",
+    "privacy",
+    "memory_clear",
+    "delete_my_data",
     "answer",
 ]
