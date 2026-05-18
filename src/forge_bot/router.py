@@ -95,6 +95,14 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    processing_request = await request_state.mark_processing_started(
+        user_id=update.effective_user.id,
+        request_id=active_request.request_id,
+    )
+    if processing_request is None:
+        await ai_lease.release()
+        return
+
     finished_status = "failed"
 
     try:
@@ -118,8 +126,8 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user,
             message,
             profile=active_profile,
-            request_id=active_request.request_id,
-            queue_wait_seconds=active_request.queue_wait_seconds,
+            request_id=processing_request.request_id,
+            queue_wait_seconds=processing_request.queue_wait_seconds,
         )
 
         # Send the generated answer back into the same chat.

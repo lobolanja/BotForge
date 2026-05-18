@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -142,6 +142,34 @@ class UserRequestState:
             finished.provider,
         )
         return finished
+
+    async def mark_processing_started(
+        self,
+        *,
+        user_id: int,
+        request_id: str,
+    ) -> ActiveUserRequest | None:
+        async with self._lock:
+            request = self._active.get(user_id)
+            if request is None or request.request_id != request_id:
+                return None
+
+            updated = replace(request, processing_started_at=_utc_now())
+            self._active[user_id] = updated
+
+        logger.info(
+            "user_request_processing_started user_id=%s chat_id=%s request_id=%s "
+            "received_at=%s processing_started_at=%s queue_wait_seconds=%.6f "
+            "provider=%s",
+            updated.user_id,
+            updated.chat_id,
+            updated.request_id,
+            updated.received_at.isoformat(),
+            updated.processing_started_at.isoformat(),
+            updated.queue_wait_seconds,
+            updated.provider,
+        )
+        return updated
 
     async def active_for_user(self, user_id: int) -> ActiveUserRequest | None:
         async with self._lock:

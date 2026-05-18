@@ -80,3 +80,36 @@ async def test_active_request_cleanup_after_exception_status() -> None:
     assert finished is not None
     assert finished.status == "failed"
     assert active_after_failure is None
+
+
+@pytest.mark.asyncio
+async def test_processing_start_can_be_moved_after_queue_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from forge_bot import request_state
+
+    initial_now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    after_global_queue = initial_now + timedelta(seconds=12)
+    received_at = initial_now - timedelta(seconds=5)
+    times = iter([initial_now, after_global_queue])
+
+    monkeypatch.setattr(request_state, "_utc_now", lambda: next(times))
+
+    state = UserRequestState()
+    active = await state.try_start(
+        user_id=123,
+        chat_id=456,
+        received_at=received_at,
+        provider="ollama",
+    )
+
+    assert active is not None
+    assert active.queue_wait_seconds == 5
+
+    updated = await state.mark_processing_started(
+        user_id=123,
+        request_id=active.request_id,
+    )
+
+    assert updated is not None
+    assert updated.queue_wait_seconds == 17

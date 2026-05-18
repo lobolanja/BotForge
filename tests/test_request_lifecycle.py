@@ -5,7 +5,9 @@ from typing import Any, cast
 import pytest
 from helpers import make_settings
 
-from forge_bot import engine, router
+from forge_bot import engine
+from forge_bot import request_state as request_state_module
+from forge_bot import router
 from forge_bot.bot_profile import BotProfile
 from forge_bot.commands import auth_guard
 from forge_bot.rate_limits import MESSAGE_TOO_LONG_MESSAGE, AbuseLimiter
@@ -183,6 +185,54 @@ async def test_request_state_is_cleared_after_success(
 
     assert update.message.replies == ["done for Ada"]
     assert await state.active_for_user(123) is None
+
+
+@pytest.mark.asyncio
+async def test_engine_receives_wait_time_after_global_ai_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    initial_now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    after_global_queue = initial_now.replace(second=12)
+    finished_now = initial_now.replace(second=13)
+    times = iter([initial_now, after_global_queue, finished_now])
+    state = UserRequestState()
+    update = fake_update(update_id=3004)
+    update.message.date = initial_now
+    queue_waits: list[float] = []
+
+    monkeypatch.setattr(request_state_module, "_utc_now", lambda: next(times))
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_profile)
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile
+        queue_waits.append(float(kwargs["queue_wait_seconds"]))
+        return "done"
+
+    monkeypatch.setattr(engine, "answer", answer)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == ["done"]
+    assert queue_waits == [12]
 
 
 @pytest.mark.asyncio
