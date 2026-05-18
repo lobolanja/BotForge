@@ -22,6 +22,7 @@ The beta roadmap is tracked in GitHub issues:
 - [Recommended task order](tasks/README.md)
 - [Product vision and user stories](tasks/product-vision-user-stories.md)
 - [Customer journeys](tasks/customer-journeys.md)
+- [Privacy and retention inventory](docs/privacy-and-retention.md)
 
 ## Runtime Architecture
 
