@@ -170,6 +170,35 @@ async def test_fallback_provider_answers_when_ollama_fails(
 
 
 @pytest.mark.asyncio
+async def test_fallback_provider_timeout_returns_timeout_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            raise RuntimeError("ollama is down")
+
+    class TimeoutProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            raise asyncio.TimeoutError
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr(
+        engine,
+        "_build_provider",
+        lambda name: TimeoutProvider() if name == "nvidia" else FailingProvider(),
+    )
+
+    result = await engine.answer("Ada", "hello", request_id="req-1")
+
+    assert result == engine.AI_TIMEOUT_FALLBACK
+
+
+@pytest.mark.asyncio
 async def test_queue_wait_over_threshold_uses_fallback_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

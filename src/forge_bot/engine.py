@@ -23,6 +23,7 @@ AI_ERROR_FALLBACK = (
 )
 FALLBACK_DISABLED_VALUES = {"", "none", "disabled", "off"}
 NVIDIA_ALLOWED_URL_SCHEMES = {"https"}
+AI_TIMEOUT_ERRORS = (TimeoutError, asyncio.TimeoutError)
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -179,7 +180,7 @@ async def answer(
             duration_seconds,
             len(msg),
         )
-    except TimeoutError:
+    except AI_TIMEOUT_ERRORS:
         logger.warning(
             "llm_chat_timeout request_id=%s provider=%s model=%s "
             "timeout_seconds=%s message_chars=%s",
@@ -352,7 +353,7 @@ async def _answer_with_fallback(
         started_at = time.monotonic()
         content = await provider.chat(model=model, messages=messages)
         duration_seconds = time.monotonic() - started_at
-    except TimeoutError:
+    except AI_TIMEOUT_ERRORS:
         logger.warning(
             "llm_chat_timeout request_id=%s provider=%s model=%s "
             "timeout_seconds=%s message_chars=%s",
