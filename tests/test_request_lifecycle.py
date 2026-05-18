@@ -5,8 +5,8 @@ from typing import Any, cast
 import pytest
 from helpers import make_settings
 
+import forge_bot.request_state as request_state_module
 from forge_bot import engine, router
-from forge_bot import request_state as request_state_module
 from forge_bot.bot_profile import BotProfile
 from forge_bot.commands import auth_guard
 from forge_bot.rate_limits import MESSAGE_TOO_LONG_MESSAGE, AbuseLimiter
