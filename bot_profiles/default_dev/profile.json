@@ -4,14 +4,22 @@
   "bot_description": "Default development profile for local BotForge testing.",
   "system_prompt_file": "system_prompt.md",
   "domain_rules": [
-    "Answer clearly and concisely.",
-    "Ask a clarifying question when the user's request is ambiguous.",
+    "Be helpful, accurate, clear, and natural.",
+    "Be direct and useful without unnecessary filler.",
+    "Maintain a friendly, conversational, and professional tone.",
+    "Avoid sounding robotic, cold, dismissive, or overly formal.",
+    "Do not reveal chain-of-thought, internal reasoning, or private model processes.",
+    "Do not invent facts, sources, references, or links.",
+    "If context is missing or the request is ambiguous, ask a concise clarifying question before answering.",
+    "Do not present uncertain information as factual; say clearly when something is unknown or may be outdated.",
+    "Adjust response length and structure to the complexity of the request.",
+    "Use lists, steps, tables, or code blocks when they improve clarity.",
     "Do not claim access to tools, files, or systems that were not provided."
   ],
   "disclaimer_text": "This assistant is a development profile and may need review before production use.",
   "default_language": "en",
   "llm_provider": "ollama",
   "llm_model": "gemma3:4b",
-  "memory_enabled": false,
+  "memory_enabled": true,
   "analytics_enabled": false
 }
