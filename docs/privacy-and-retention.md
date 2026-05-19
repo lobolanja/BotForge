@@ -11,8 +11,7 @@ This is product documentation, not final legal wording.
 - `/privacy` explains the stored data categories and the available data-control
   commands.
 - `/memory_clear` clears personalization memory for the linked user. The
-  current schema has no memory tables yet, so the command is wired as a stable
-  hook for issue #24.
+  command hard-deletes recent conversation messages and compacted memory.
 - `/delete_my_data` creates a durable beta deletion request and explains the
   consequences.
 - `/delete_my_data CONFIRM` performs self-service beta deletion for non-admin
@@ -27,8 +26,8 @@ This is product documentation, not final legal wording.
 | Invite records | token hash, role, email, created_by, used_by | access audit | retained as operational audit | keep token audit, avoid exposing raw tokens, user deletion removes direct account link where possible |
 | Policy acceptances | user id, policy version, privacy version, timestamp | compliance and access gate | while account is active or needed for audit | retained as minimal operational audit after account deletion |
 | Inbound messages | update id, message id, chat id, text, file metadata, status | recovery and operations | short operational window, controlled by operational retention work | confirmed deletion clears Telegram user id, text, raw update, and file metadata for that Telegram user |
-| Conversation memory | recent user and assistant turns | useful context | configurable after issue #24 | hard delete on `/memory_clear` after memory tables exist |
-| Compacted memory | summary facts and preferences | long-term personalization | configurable after issue #24 | hard delete on `/memory_clear` after memory tables exist |
+| Conversation memory | recent user and assistant turns | useful context | bounded by `MEMORY_RECENT_MESSAGES`; default latest 10 messages | hard delete on `/memory_clear` and confirmed deletion |
+| Compacted memory | summary facts and preferences | long-term personalization | updated when unsummarized messages reach the configured compaction threshold | hard delete on `/memory_clear` and confirmed deletion |
 | Analytics records | redacted text, intent, quality labels | product improvement | configurable after issue #25 | exclude or delete on user deletion after analytics tables exist |
 | Uploaded documents | file id, external storage id, metadata | future analysis | configurable after issue #26 | delete external object and metadata after file storage exists |
 | Logs | timestamps, ids, error classes | debugging and security | short local or deployment-specific retention | logs must not include raw private text, invite tokens, provider keys, or unsafe filenames |
@@ -59,5 +58,5 @@ owner review instead of self-service deletion.
   raw Telegram update JSON, or implementation details.
 - Data-control commands do not require current policy acceptance. A user must be
   able to remove data even if they have not accepted the current policy.
-- New memory, analytics, and file-storage tables must update this inventory and
-  add their table-specific deletion behavior before they are enabled.
+- New analytics and file-storage tables must update this inventory and add
+  their table-specific deletion behavior before they are enabled.

@@ -75,7 +75,7 @@ DB_NAME=botforge
 DB_PORT=5432
 
 OLLAMA_HOST=http://ollama:11434
-OLLAMA_MODEL=gemma2:2b
+OLLAMA_MODEL=gemma3:4b
 
 LLM_PRIMARY_PROVIDER=ollama
 LLM_FALLBACK_PROVIDER=nvidia
@@ -100,9 +100,10 @@ Notes:
 - `DB_HOST` must be `postgres` when running inside Docker Compose.
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
 - `OLLAMA_MODEL` is used by the `ollama-pull` container. Keep it aligned with
-  the active profile's `llm_model`. The default is `gemma2:2b`, the small
-  Gemma 2 model. If these values drift, Compose can pull one model while the
-  bot tries to use another at runtime.
+  the active profile's `llm_model`. The default is `gemma3:4b`, a balanced
+  Gemma model for local development on machines with limited RAM. If these
+  values drift, Compose can pull one model while the bot tries to use another
+  at runtime.
 - `LLM_PRIMARY_PROVIDER=ollama` keeps local inference as the first choice.
   `LLM_FALLBACK_PROVIDER=nvidia` enables fallback through NVIDIA NIM when
   Ollama errors or when the lifecycle queue wait exceeds
@@ -162,8 +163,15 @@ To create a new bot profile:
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
 deterministic order: bot system prompt and rules first, optional memory, recent
-conversation messages, then the current user message. Memory inputs are wired as
-empty for now because memory implementation is outside the current scope.
+conversation messages, then the current user message.
+
+When memory is enabled globally and in the active bot profile, BotForge stores a
+bounded recent window per internal user and bot profile. The default window keeps
+the last 10 user/assistant messages. After 6 unsummarized messages are present,
+the bot asks the configured LLM to compact the oldest 5 into a durable summary
+of important dates, tastes, preferences, priorities, goals, and constraints. The
+process keeps a per-user/profile cache in memory after the first database load,
+so normal follow-up prompts do not reread the same context from PostgreSQL.
 
 ## 2. Build And Start The Stack
 
@@ -183,7 +191,7 @@ OLLAMA_MODEL=<ollama_model> docker compose up -d --build
 ```
 
 For a smaller development machine, choose a model that your hardware can run,
-for example the default `gemma2:2b` or another small model supported by Ollama.
+for example the default `gemma3:4b` or another model supported by Ollama.
 
 If you previously ran the older MariaDB-based local stack, update your `.env`
 from `.env.example` and remove old Compose containers:
@@ -314,7 +322,25 @@ When a limit is exceeded, users receive a short friendly message. The bot logs
 the limit name, user id, chat id, timestamp, and small counters only; it does
 not include raw private message text in abuse-limit logs.
 
-## 6. LLM Provider Fallback
+## 6. Conversation Memory
+
+Conversation memory is enabled with both the global setting and the active bot
+profile's `memory_enabled` flag:
+
+```env
+MEMORY_ENABLED=true
+MEMORY_RECENT_MESSAGES=10
+MEMORY_COMPACTION_TRIGGER_MESSAGES=6
+MEMORY_COMPACTION_SOURCE_MESSAGES=5
+MEMORY_MAX_MESSAGE_CHARS=4000
+MEMORY_COMPACTED_MAX_CHARS=2000
+```
+
+Memory is scoped by internal `users.id` and `bot_profile_id`, not by a shared
+Telegram chat alone. Users can remove their recent and compacted memory with
+`/memory_clear`; broader account deletion also clears memory.
+
+## 7. LLM Provider Fallback
 
 BotForge uses a small provider abstraction around model calls. The primary
 provider is Ollama by default. If Ollama is unavailable or returns an error, the
@@ -341,7 +367,7 @@ and trial terms can change, so confirm the selected model in the catalog before
 using it beyond development. BotForge logs the request id, selected provider,
 fallback reason, and duration; it does not log API keys or raw user messages.
 
-## 7. Create The First Invite Link
+## 8. Create The First Invite Link
 
 BotForge links Telegram users to invited email identities through invite links:
 
@@ -383,7 +409,7 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-## 8. Admin Invite Management
+## 9. Admin Invite Management
 
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
@@ -474,7 +500,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 9. Telegram Smoke Test
+## 10. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
@@ -579,7 +605,8 @@ including users and downloaded models.
 ### Database Backup
 
 Database backups should include user records, roles, invite metadata, policy
-acceptances, inbound message state, and any future memory or analytics tables.
+acceptances, inbound message state, memory tables, and any future analytics
+tables.
 They should not include `.env`, local Ollama model caches, or generated logs.
 
 Create a compressed PostgreSQL dump from the running Compose stack:
@@ -728,12 +755,12 @@ python -m pytest
 
 ## Current Limitations
 
-- Conversation memory tables are not implemented yet. `/memory_clear` is wired
-  as a stable command hook and will clear those records when memory storage is
-  added.
+- Conversation memory is bounded to the latest configured raw messages plus a
+  compacted summary. It is not vector search and does not retrieve arbitrary old
+  facts beyond what was compacted.
 - Telegram updates that were never delivered to the bot and are older than
   Telegram's pending-update retention window cannot be recovered.
-- The default AI profile uses `gemma2:2b`. Change the active profile's
+- The default AI profile uses `gemma3:4b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.
