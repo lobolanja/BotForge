@@ -1,9 +1,11 @@
 import logging
+from collections.abc import Sequence
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import engine
+from .bot_profile import BotProfile
 from .commands.auth_guard import require_login
 from .config import get_settings
 from .database import get_user_by_telegram_id
@@ -18,6 +20,7 @@ from .message_store import (
     persist_inbound_message,
     persist_update,
 )
+from .prompting import ChatMessage
 from .rate_limits import LimitDecision, abuse_limiter
 from .request_state import REQUEST_WAITING_MESSAGE, request_state
 
@@ -196,7 +199,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-def _memory_enabled(profile: engine.BotProfile) -> bool:
+def _memory_enabled(profile: BotProfile) -> bool:
     if not profile.memory_enabled:
         return False
     return get_settings().memory_enabled
@@ -212,11 +215,11 @@ async def _remember_successful_turn(
     telegram_message_id: int | None,
     inbound_message_id: int | None,
     request_id: str,
-    profile: engine.BotProfile,
+    profile: BotProfile,
 ) -> None:
     async def summarize(
         existing_summary: str | None,
-        source_messages: list[engine.ChatMessage],
+        source_messages: Sequence[ChatMessage],
         max_chars: int,
     ) -> str | None:
         return await engine.summarize_memory(

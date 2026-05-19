@@ -4,6 +4,7 @@ import logging
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -240,7 +241,7 @@ async def summarize_memory(
     *,
     profile: BotProfile,
     existing_summary: str | None,
-    source_messages: list[ChatMessage],
+    source_messages: Sequence[ChatMessage],
     max_chars: int,
     request_id: str | None = None,
 ) -> str | None:
@@ -312,7 +313,7 @@ def load_default_profile() -> BotProfile:
 def _memory_summary_prompt(
     *,
     existing_summary: str | None,
-    source_messages: list[ChatMessage],
+    source_messages: Sequence[ChatMessage],
     max_chars: int,
 ) -> list[ChatMessage]:
     transcript = "\n".join(
