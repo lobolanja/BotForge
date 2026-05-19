@@ -155,12 +155,12 @@ Run these steps from the clean checkout.
    - Fail: errors are raw, confusing, or silently ignored.
 7. Confirm policy gating.
    - Pass: the user sees the policy summary and cannot use protected chat before
-     `/accept_policy`.
+     accepting via the inline buttons or `/accept_policy`.
    - Fail: protected chat works before policy acceptance or the policy text is
      missing.
 8. Accept policy.
    ```text
-   /accept_policy
+   Tap "Accept policy" or run /accept_policy
    ```
    - Pass: protected chat works after acceptance.
    - Fail: acceptance is not persisted or chat remains blocked.

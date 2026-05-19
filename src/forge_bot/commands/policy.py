@@ -1,4 +1,6 @@
-from telegram import Update
+from typing import Literal, cast
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import ContextTypes
 
 from forge_bot.config import get_settings
@@ -6,6 +8,7 @@ from forge_bot.database import (
     accept_current_policy,
     current_policy_versions,
     decline_current_policy,
+    has_current_policy_acceptance,
     verify_user,
 )
 
@@ -14,26 +17,64 @@ IDENTITY_UNAVAILABLE_MESSAGE = (
 )
 ACCEPT_UNLINKED_MESSAGE = "Open your Telegram invite link before accepting the policy."
 DECLINE_UNLINKED_MESSAGE = "Open your Telegram invite link before declining the policy."
+ACCEPT_SUCCESS_MESSAGE = "Policy accepted. You can now send me a message."
+ACCEPT_ALREADY_ACCEPTED_MESSAGE = (
+    "You already accepted the current policy. You can send me a message."
+)
+ACCEPT_UNAVAILABLE_MESSAGE = "Policy acceptance is temporarily unavailable."
+DECLINE_SUCCESS_MESSAGE = (
+    "Policy declined. I will not process protected chat messages unless you "
+    "accept the policy later."
+)
+DECLINE_UNAVAILABLE_MESSAGE = "Policy decline is temporarily unavailable."
+POLICY_ACCEPT_CALLBACK = "policy:accept"
+POLICY_DECLINE_CALLBACK = "policy:decline"
 
-POLICY_SUMMARY = """Before you start, you must accept the BotForge usage policy.
+PolicyActionStatus = Literal[
+    "accepted",
+    "already_accepted",
+    "declined",
+    "not_linked",
+    "database_unavailable",
+]
 
-Summary:
-- This bot answers with AI and can make mistakes.
-- Do not send secrets or information you do not want processed.
-- We store data needed to provide the service.
-- Conversation memory may be used to improve your answers.
-- Analytics or training consent is handled separately and is not enabled here.
+POLICY_PROMPT_INTRO = (
+    "Please review the usage policy before using BotForge.\n\n"
+    "By accepting, you confirm that you understand how the bot may store "
+    "messages, memory, files, and optional analytics data according to the "
+    "current policy."
+)
+POLICY_COMMAND_FALLBACK = (
+    "You can use the buttons below or the /accept_policy and /decline_policy commands."
+)
 
-Use /policy to read the policy, then /accept_policy or /decline_policy."""
+
+def policy_action_keyboard() -> InlineKeyboardMarkup:
+    """Build the inline keyboard used in onboarding and /policy prompts."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Accept policy",
+                    callback_data=POLICY_ACCEPT_CALLBACK,
+                ),
+                InlineKeyboardButton(
+                    "Decline",
+                    callback_data=POLICY_DECLINE_CALLBACK,
+                ),
+            ]
+        ]
+    )
 
 
 def policy_prompt() -> str:
     """Build the short first-layer policy notice shown inside Telegram."""
     versions = current_policy_versions()
     return (
-        f"{POLICY_SUMMARY}\n\n"
+        f"{POLICY_PROMPT_INTRO}\n\n"
         f"Policy version: {versions.policy_version}\n"
-        f"Privacy notice version: {versions.privacy_notice_version}"
+        f"Privacy notice version: {versions.privacy_notice_version}\n\n"
+        f"{POLICY_COMMAND_FALLBACK}"
     )
 
 
@@ -56,51 +97,114 @@ async def policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "to provide better answers. Optional analytics or training consent is "
         "separate and defaults to off. "
         "\n\nDo you accept this policy?"
-        "\nUse /accept_policy to accept or /decline_policy to decline."
+        f"\n{POLICY_COMMAND_FALLBACK}"
     )
     if settings.bot_policy_url:
         text = f"{text}\n\nFull policy: {settings.bot_policy_url}"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=policy_action_keyboard())
 
 
 async def accept_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return
 
-    if not await _require_linked_identity(update, ACCEPT_UNLINKED_MESSAGE):
-        return
-
-    if accept_current_policy(update.effective_user.id):
-        await update.message.reply_text("Policy accepted. You can now use BotForge.")
-    else:
-        await update.message.reply_text("Policy acceptance is temporarily unavailable.")
+    status = accept_current_policy_for_user(update.effective_user.id)
+    await update.message.reply_text(_accept_policy_message(status))
 
 
 async def decline_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return
 
-    if not await _require_linked_identity(update, DECLINE_UNLINKED_MESSAGE):
+    status = decline_current_policy_for_user(update.effective_user.id)
+    await update.message.reply_text(_decline_policy_message(status))
+
+
+async def accept_policy_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    del context
+    if not update.callback_query:
         return
 
-    if decline_current_policy(update.effective_user.id):
-        await update.message.reply_text(
-            "Policy declined. BotForge cannot be used until you accept /policy."
-        )
-    else:
-        await update.message.reply_text("Policy decline is temporarily unavailable.")
+    query = update.callback_query
+    await query.answer()
+
+    if not update.effective_user or not query.message:
+        return
+
+    message = cast(Message, query.message)
+    status = accept_current_policy_for_user(update.effective_user.id)
+    await message.reply_text(_accept_policy_message(status))
 
 
-async def _require_linked_identity(update: Update, unlinked_message: str) -> bool:
-    if not update.message or not update.effective_user:
-        return False
+async def decline_policy_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    del context
+    if not update.callback_query:
+        return
 
-    verified = verify_user(update.effective_user.id)
+    query = update.callback_query
+    await query.answer()
+
+    if not update.effective_user or not query.message:
+        return
+
+    message = cast(Message, query.message)
+    status = decline_current_policy_for_user(update.effective_user.id)
+    await message.reply_text(_decline_policy_message(status))
+
+
+def accept_current_policy_for_user(telegram_user_id: int) -> PolicyActionStatus:
+    """Apply current policy acceptance rules for commands and button callbacks."""
+    verified = verify_user(telegram_user_id)
     if verified is None:
-        await update.message.reply_text(IDENTITY_UNAVAILABLE_MESSAGE)
-        return False
+        return "database_unavailable"
     if not verified:
-        await update.message.reply_text(unlinked_message)
-        return False
-    return True
+        return "not_linked"
+
+    already_accepted = has_current_policy_acceptance(telegram_user_id)
+    if already_accepted is None:
+        return "database_unavailable"
+    if already_accepted:
+        return "already_accepted"
+
+    if accept_current_policy(telegram_user_id):
+        return "accepted"
+    return "database_unavailable"
+
+
+def decline_current_policy_for_user(telegram_user_id: int) -> PolicyActionStatus:
+    """Apply current policy decline rules for commands and button callbacks."""
+    verified = verify_user(telegram_user_id)
+    if verified is None:
+        return "database_unavailable"
+    if not verified:
+        return "not_linked"
+
+    if decline_current_policy(telegram_user_id):
+        return "declined"
+    return "database_unavailable"
+
+
+def _accept_policy_message(status: PolicyActionStatus) -> str:
+    messages = {
+        "accepted": ACCEPT_SUCCESS_MESSAGE,
+        "already_accepted": ACCEPT_ALREADY_ACCEPTED_MESSAGE,
+        "not_linked": ACCEPT_UNLINKED_MESSAGE,
+        "database_unavailable": ACCEPT_UNAVAILABLE_MESSAGE,
+    }
+    return messages.get(status, IDENTITY_UNAVAILABLE_MESSAGE)
+
+
+def _decline_policy_message(status: PolicyActionStatus) -> str:
+    messages = {
+        "declined": DECLINE_SUCCESS_MESSAGE,
+        "not_linked": DECLINE_UNLINKED_MESSAGE,
+        "database_unavailable": DECLINE_UNAVAILABLE_MESSAGE,
+    }
+    return messages.get(status, IDENTITY_UNAVAILABLE_MESSAGE)

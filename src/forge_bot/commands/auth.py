@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 
 from forge_bot.database import redeem_invite_token, status_user
 
-from .policy import policy_prompt
+from .policy import policy_action_keyboard, policy_prompt
 
 INVITE_PROMPT = "Welcome to BotForge. Open your invite link to connect your identity."
 ALREADY_LINKED_START = (
@@ -47,7 +47,10 @@ async def _reply_to_invite_redemption(
 
     redemption = redeem_invite_token(token, telegram_id)
     if redemption.status == "success":
-        await update.message.reply_text(f"Invite accepted.\n\n{policy_prompt()}")
+        await update.message.reply_text(
+            f"Invite accepted.\n\n{policy_prompt()}",
+            reply_markup=policy_action_keyboard(),
+        )
         return
 
     message = REDEMPTION_FAILURE_MESSAGES.get(
