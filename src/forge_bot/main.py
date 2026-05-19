@@ -3,7 +3,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 
 from .bot_profile import BotProfileError, load_active_bot_profile
 from .commands.auth import start, status
@@ -12,7 +18,15 @@ from .commands.greet import greet
 from .commands.help import help_command
 from .commands.invite import invite
 from .commands.ping import ping
-from .commands.policy import accept_policy, decline_policy, policy
+from .commands.policy import (
+    POLICY_ACCEPT_CALLBACK,
+    POLICY_DECLINE_CALLBACK,
+    accept_policy,
+    accept_policy_callback,
+    decline_policy,
+    decline_policy_callback,
+    policy,
+)
 from .commands.privacy import delete_my_data, memory_clear, privacy
 from .commands.time import time
 from .commands.translate import translate
@@ -203,6 +217,19 @@ def main() -> None:
 
     for command, handler in COMMAND_HANDLERS:
         bot.add_handler(CommandHandler(command, handler))
+
+    bot.add_handler(
+        CallbackQueryHandler(
+            accept_policy_callback,
+            pattern=f"^{POLICY_ACCEPT_CALLBACK}$",
+        )
+    )
+    bot.add_handler(
+        CallbackQueryHandler(
+            decline_policy_callback,
+            pattern=f"^{POLICY_DECLINE_CALLBACK}$",
+        )
+    )
 
     # Unknown commands are handled after known commands fail to match.
     bot.add_handler(MessageHandler(filters.COMMAND, unknown_command))

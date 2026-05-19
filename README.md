@@ -389,9 +389,10 @@ to the user who should join the beta. When the user opens it, Telegram sends
 after the selected TTL.
 
 After invite redemption, BotForge shows the required usage policy summary.
-Users must accept the current policy with `/accept_policy` before protected
-commands or AI chat run. They can read the current notice again with `/policy`
-or decline with `/decline_policy`.
+Users can accept or decline immediately with Telegram inline buttons. The
+fallback commands `/policy`, `/accept_policy`, and `/decline_policy` remain
+available, and protected commands or AI chat stay blocked until the current
+policy is accepted.
 
 Policy acceptance is stored in `user_policy_acceptances` with the user id,
 policy version, privacy notice version, timestamp, and source. Change

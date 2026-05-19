@@ -10,9 +10,11 @@ from forge_bot.database import InviteRedemption
 class FakeMessage:
     def __init__(self) -> None:
         self.replies: list[str] = []
+        self.reply_calls: list[dict[str, object | None]] = []
 
-    async def reply_text(self, text: str) -> None:
+    async def reply_text(self, text: str, reply_markup: object | None = None) -> None:
         self.replies.append(text)
+        self.reply_calls.append({"text": text, "reply_markup": reply_markup})
 
 
 def create_update(user_id: int = 123) -> Any:
@@ -72,6 +74,7 @@ async def test_start_without_token_reports_already_linked_user(
 @pytest.mark.asyncio
 async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> None:
     update = create_update(user_id=456)
+    reply_markup = object()
 
     def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
         assert raw_token == "token-123"
@@ -91,6 +94,10 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
         "forge_bot.commands.auth.policy_prompt",
         lambda: "Policy prompt",
     )
+    monkeypatch.setattr(
+        "forge_bot.commands.auth.policy_action_keyboard",
+        lambda: reply_markup,
+    )
 
     await start(update, create_context(args=["token-123"]))
 
@@ -98,6 +105,7 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
         "Welcome to BotForge. Open your invite link to connect your identity.",
         "Invite accepted.\n\nPolicy prompt",
     ]
+    assert update.message.reply_calls[-1]["reply_markup"] is reply_markup
 
 
 @pytest.mark.asyncio
