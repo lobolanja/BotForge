@@ -69,8 +69,7 @@ def _memory_content(
         "User memory for this same authenticated user and bot profile. "
         "Use it as previous conversation context. If the user asks about their "
         "name, preferences, priorities, dates, or earlier statements, answer "
-        "from this memory when it contains the information.\n\n"
-        + "\n\n".join(sections)
+        "from this memory when it contains the information.\n\n" + "\n\n".join(sections)
     )
 
 

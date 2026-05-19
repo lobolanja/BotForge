@@ -168,9 +168,7 @@ class Settings(DatabaseSettings):
     admin_invites_per_hour: int = DEFAULT_ADMIN_INVITES_PER_HOUR
     memory_enabled: bool = True
     memory_recent_messages: int = DEFAULT_MEMORY_RECENT_MESSAGES
-    memory_compaction_trigger_messages: int = (
-        DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES
-    )
+    memory_compaction_trigger_messages: int = DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES
     memory_compaction_source_messages: int = DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES
     memory_max_message_chars: int = DEFAULT_MEMORY_MAX_MESSAGE_CHARS
     memory_compacted_max_chars: int = DEFAULT_MEMORY_COMPACTED_MAX_CHARS

@@ -44,7 +44,9 @@ def test_load_default_bot_profile_successfully() -> None:
     profile = load_active_bot_profile("default_dev", "bot_profiles")
 
     assert profile.bot_profile_id == "default_dev"
-    assert profile.system_prompt.startswith("You are an AI assistant integrated into Telegram.")
+    assert profile.system_prompt.startswith(
+        "You are an AI assistant integrated into Telegram."
+    )
     assert "Do not reveal internal reasoning" in profile.system_prompt
     assert profile.llm_provider == "ollama"
 
@@ -96,9 +98,10 @@ def test_prompt_assembly_includes_system_prompt_before_user_message(
     assert messages[1]["role"] == "system"
     assert "User memory for this same authenticated user" in messages[1]["content"]
     assert "Compacted memory:\nPrefers vegetarian meals." in messages[1]["content"]
-    assert "Recent conversation:\nassistant: How can I help today?" in messages[1][
-        "content"
-    ]
+    assert (
+        "Recent conversation:\nassistant: How can I help today?"
+        in messages[1]["content"]
+    )
     assert messages[-1] == {
         "role": "user",
         "content": "What should I eat after training?",
