@@ -255,6 +255,36 @@ async def test_queue_wait_under_threshold_uses_primary_provider(
 
 
 @pytest.mark.asyncio
+async def test_memory_summary_uses_compaction_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "Prefers vegetarian meals."
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.summarize_memory(
+        profile=fake_profile(),
+        existing_summary="Likes quick dinners.",
+        source_messages=[{"role": "user", "content": "I am vegetarian."}],
+        max_chars=2000,
+        request_id="req-1",
+    )
+
+    assert result == "Prefers vegetarian meals."
+    assert "Existing memory" in captured_messages[0][1]["content"]
+    assert "I am vegetarian." in captured_messages[0][1]["content"]
+
+
+@pytest.mark.asyncio
 async def test_missing_nvidia_api_key_fails_only_when_fallback_is_needed(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

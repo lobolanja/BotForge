@@ -17,6 +17,11 @@ from forge_bot.config import (
     DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS,
     DEFAULT_LLM_PRIMARY_PROVIDER,
     DEFAULT_MAX_MESSAGE_CHARS,
+    DEFAULT_MEMORY_COMPACTED_MAX_CHARS,
+    DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES,
+    DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES,
+    DEFAULT_MEMORY_MAX_MESSAGE_CHARS,
+    DEFAULT_MEMORY_RECENT_MESSAGES,
     DEFAULT_MESSAGE_EXPIRATION_HOURS,
     DEFAULT_MESSAGE_MAX_RETRIES,
     DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
@@ -100,6 +105,18 @@ def test_defaults_are_applied() -> None:
     assert settings.global_active_ai_requests == DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS
     assert settings.global_ai_queue_size == DEFAULT_GLOBAL_AI_QUEUE_SIZE
     assert settings.admin_invites_per_hour == DEFAULT_ADMIN_INVITES_PER_HOUR
+    assert settings.memory_enabled
+    assert settings.memory_recent_messages == DEFAULT_MEMORY_RECENT_MESSAGES
+    assert (
+        settings.memory_compaction_trigger_messages
+        == DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES
+    )
+    assert (
+        settings.memory_compaction_source_messages
+        == DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES
+    )
+    assert settings.memory_max_message_chars == DEFAULT_MEMORY_MAX_MESSAGE_CHARS
+    assert settings.memory_compacted_max_chars == DEFAULT_MEMORY_COMPACTED_MAX_CHARS
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled
 
@@ -144,3 +161,23 @@ def test_llm_fallback_settings_are_configurable() -> None:
     assert settings.nvidia_api_key == "secret-key"
     assert settings.nvidia_base_url == "https://example.test/v1"
     assert settings.nvidia_model == "nvidia/example-model"
+
+
+def test_memory_settings_are_configurable() -> None:
+    env = valid_env() | {
+        "MEMORY_ENABLED": "false",
+        "MEMORY_RECENT_MESSAGES": "8",
+        "MEMORY_COMPACTION_TRIGGER_MESSAGES": "4",
+        "MEMORY_COMPACTION_SOURCE_MESSAGES": "3",
+        "MEMORY_MAX_MESSAGE_CHARS": "1000",
+        "MEMORY_COMPACTED_MAX_CHARS": "700",
+    }
+
+    settings = Settings.from_env(env)
+
+    assert not settings.memory_enabled
+    assert settings.memory_recent_messages == 8
+    assert settings.memory_compaction_trigger_messages == 4
+    assert settings.memory_compaction_source_messages == 3
+    assert settings.memory_max_message_chars == 1000
+    assert settings.memory_compacted_max_chars == 700

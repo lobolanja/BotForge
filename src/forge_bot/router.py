@@ -1,8 +1,13 @@
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import engine
 from .commands.auth_guard import require_login
+from .config import get_settings
+from .database import get_user_by_telegram_id
+from .memory_store import add_successful_turn, get_memory_context
 from .message_store import (
     mark_answered,
     mark_failed,
@@ -15,6 +20,8 @@ from .message_store import (
 )
 from .rate_limits import LimitDecision, abuse_limiter
 from .request_state import REQUEST_WAITING_MESSAGE, request_state
+
+logger = logging.getLogger(__name__)
 
 
 async def record_inbound_update(
@@ -64,6 +71,29 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     active_profile = engine.load_default_profile()
+    memory_is_enabled = _memory_enabled(active_profile)
+    internal_user = (
+        get_user_by_telegram_id(update.effective_user.id) if memory_is_enabled else None
+    )
+    memory_context = None
+    if internal_user and memory_is_enabled:
+        memory_context = get_memory_context(
+            user_id=int(internal_user["id"]),
+            bot_profile_id=active_profile.bot_profile_id,
+            exclude_inbound_message_id=(
+                int(persisted["id"]) if persisted.get("id") is not None else None
+            ),
+        )
+        logger.info(
+            "memory_context_loaded request_update_id=%s user_id=%s "
+            "bot_profile_id=%s recent_messages=%s compacted_chars=%s",
+            update.update_id,
+            int(internal_user["id"]),
+            active_profile.bot_profile_id,
+            len(memory_context.recent_conversation_messages),
+            len(memory_context.compacted_user_memory or ""),
+        )
+
     active_request = await request_state.try_start(
         user_id=update.effective_user.id,
         chat_id=update.effective_chat.id,
@@ -128,11 +158,29 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             profile=active_profile,
             request_id=processing_request.request_id,
             queue_wait_seconds=processing_request.queue_wait_seconds,
+            compacted_user_memory=(
+                memory_context.compacted_user_memory if memory_context else None
+            ),
+            recent_conversation_messages=(
+                memory_context.recent_conversation_messages if memory_context else []
+            ),
         )
 
         # Send the generated answer back into the same chat.
         await update.message.reply_text(answer)
         mark_answered(update.update_id)
+        if internal_user and memory_is_enabled:
+            await _remember_successful_turn(
+                internal_user_id=int(internal_user["id"]),
+                bot_profile_id=active_profile.bot_profile_id,
+                user_message=message,
+                assistant_message=answer,
+                telegram_chat_id=update.effective_chat.id,
+                telegram_message_id=getattr(update.message, "message_id", None),
+                inbound_message_id=claimed.get("id") if claimed else None,
+                request_id=processing_request.request_id,
+                profile=active_profile,
+            )
         finished_status = "answered"
     except Exception as exc:
         mark_failed(update.update_id, type(exc).__name__)
@@ -145,6 +193,59 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             user_id=update.effective_user.id,
             request_id=active_request.request_id,
             status=finished_status,
+        )
+
+
+def _memory_enabled(profile: engine.BotProfile) -> bool:
+    if not profile.memory_enabled:
+        return False
+    return get_settings().memory_enabled
+
+
+async def _remember_successful_turn(
+    *,
+    internal_user_id: int,
+    bot_profile_id: str,
+    user_message: str,
+    assistant_message: str,
+    telegram_chat_id: int | None,
+    telegram_message_id: int | None,
+    inbound_message_id: int | None,
+    request_id: str,
+    profile: engine.BotProfile,
+) -> None:
+    async def summarize(
+        existing_summary: str | None,
+        source_messages: list[engine.ChatMessage],
+        max_chars: int,
+    ) -> str | None:
+        return await engine.summarize_memory(
+            profile=profile,
+            existing_summary=existing_summary,
+            source_messages=source_messages,
+            max_chars=max_chars,
+            request_id=request_id,
+        )
+
+    try:
+        await add_successful_turn(
+            user_id=internal_user_id,
+            bot_profile_id=bot_profile_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            telegram_chat_id=telegram_chat_id,
+            telegram_message_id=telegram_message_id,
+            inbound_message_id=inbound_message_id,
+            request_id=request_id,
+            summarizer=summarize,
+        )
+    except Exception:
+        # The user already received the answer. Memory must not turn that into
+        # a failed inbound message or leak raw content into logs.
+        logger.exception(
+            "memory_store_after_answer_failed request_id=%s user_id=%s",
+            request_id,
+            internal_user_id,
         )
 
 

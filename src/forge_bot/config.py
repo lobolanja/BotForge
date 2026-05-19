@@ -32,6 +32,11 @@ DEFAULT_CHAT_MESSAGES_PER_MINUTE = 30
 DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS = 2
 DEFAULT_GLOBAL_AI_QUEUE_SIZE = 20
 DEFAULT_ADMIN_INVITES_PER_HOUR = 50
+DEFAULT_MEMORY_RECENT_MESSAGES = 10
+DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES = 6
+DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES = 5
+DEFAULT_MEMORY_MAX_MESSAGE_CHARS = 4000
+DEFAULT_MEMORY_COMPACTED_MAX_CHARS = 2000
 DEFAULT_BOTFORGE_ENV = "development"
 PRODUCTION_ENVS = frozenset({"prod", "production"})
 DEVELOPMENT_DB_PASSWORD = "botforge_dev_password"
@@ -161,6 +166,14 @@ class Settings(DatabaseSettings):
     global_active_ai_requests: int = DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS
     global_ai_queue_size: int = DEFAULT_GLOBAL_AI_QUEUE_SIZE
     admin_invites_per_hour: int = DEFAULT_ADMIN_INVITES_PER_HOUR
+    memory_enabled: bool = True
+    memory_recent_messages: int = DEFAULT_MEMORY_RECENT_MESSAGES
+    memory_compaction_trigger_messages: int = (
+        DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES
+    )
+    memory_compaction_source_messages: int = DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES
+    memory_max_message_chars: int = DEFAULT_MEMORY_MAX_MESSAGE_CHARS
+    memory_compacted_max_chars: int = DEFAULT_MEMORY_COMPACTED_MAX_CHARS
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
     botforge_env: str = DEFAULT_BOTFORGE_ENV
@@ -281,6 +294,30 @@ class Settings(DatabaseSettings):
                 env.get("ADMIN_INVITES_PER_HOUR"),
                 DEFAULT_ADMIN_INVITES_PER_HOUR,
             ),
+            memory_enabled=_parse_bool_default(
+                env.get("MEMORY_ENABLED"),
+                default=True,
+            ),
+            memory_recent_messages=_parse_positive_int(
+                env.get("MEMORY_RECENT_MESSAGES"),
+                DEFAULT_MEMORY_RECENT_MESSAGES,
+            ),
+            memory_compaction_trigger_messages=_parse_positive_int(
+                env.get("MEMORY_COMPACTION_TRIGGER_MESSAGES"),
+                DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES,
+            ),
+            memory_compaction_source_messages=_parse_positive_int(
+                env.get("MEMORY_COMPACTION_SOURCE_MESSAGES"),
+                DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES,
+            ),
+            memory_max_message_chars=_parse_positive_int(
+                env.get("MEMORY_MAX_MESSAGE_CHARS"),
+                DEFAULT_MEMORY_MAX_MESSAGE_CHARS,
+            ),
+            memory_compacted_max_chars=_parse_positive_int(
+                env.get("MEMORY_COMPACTED_MAX_CHARS"),
+                DEFAULT_MEMORY_COMPACTED_MAX_CHARS,
+            ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")
             ),
@@ -375,6 +412,14 @@ def _parse_bool(value: str | None) -> bool:
     cleaned = _clean(value)
     if cleaned is None:
         return False
+    return cleaned.lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_bool_default(value: str | None, *, default: bool) -> bool:
+    """Parse an optional boolean setting with a caller-provided default."""
+    cleaned = _clean(value)
+    if cleaned is None:
+        return default
     return cleaned.lower() in {"1", "true", "yes", "on"}
 
 

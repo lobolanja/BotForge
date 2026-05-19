@@ -130,6 +130,8 @@ async def answer(
     profile: BotProfile | None = None,
     request_id: str | None = None,
     queue_wait_seconds: float = 0.0,
+    compacted_user_memory: str | None = None,
+    recent_conversation_messages: list[ChatMessage] | None = None,
 ) -> str:
     """Send a profile-aware prompt to the configured LLM provider.
 
@@ -139,6 +141,8 @@ async def answer(
         profile: Optional profile override used by tests or future flows.
         request_id: Optional lifecycle request id for provider logs.
         queue_wait_seconds: Seconds between message receipt and processing start.
+        compacted_user_memory: Durable summary for this user/profile.
+        recent_conversation_messages: Recent raw messages for this user/profile.
 
     Returns:
         The assistant response text produced by Ollama.
@@ -149,8 +153,8 @@ async def answer(
         active_profile,
         current_user_message=msg,
         user_display_name=user,
-        compacted_user_memory=None,
-        recent_conversation_messages=[],
+        compacted_user_memory=compacted_user_memory,
+        recent_conversation_messages=recent_conversation_messages or [],
         runtime_safety_instructions=[],
     )
     request_id_text = request_id or "unknown"
@@ -232,6 +236,66 @@ async def answer(
     )
 
 
+async def summarize_memory(
+    *,
+    profile: BotProfile,
+    existing_summary: str | None,
+    source_messages: list[ChatMessage],
+    max_chars: int,
+    request_id: str | None = None,
+) -> str | None:
+    """Compact older chat messages into durable, user-scoped memory."""
+    if not source_messages:
+        return existing_summary
+
+    request_id_text = request_id or "unknown"
+    provider: OllamaProvider | NvidiaNimProvider | None = None
+    messages = _memory_summary_prompt(
+        existing_summary=existing_summary,
+        source_messages=source_messages,
+        max_chars=max_chars,
+    )
+    try:
+        provider = _select_provider(
+            profile_provider=profile.llm_provider,
+            queue_wait_seconds=0.0,
+        )
+        content = await provider.chat(model=profile.llm_model, messages=messages)
+    except Exception:
+        provider_name = _provider_name(provider)
+        logger.warning(
+            "memory_compaction_primary_failed request_id=%s provider=%s "
+            "source_messages=%s",
+            request_id_text,
+            provider_name,
+            len(source_messages),
+            exc_info=True,
+        )
+        fallback_summary = await _answer_with_fallback(
+            messages=messages,
+            model=profile.llm_model,
+            max_chars=max_chars,
+            message_chars=sum(len(message["content"]) for message in source_messages),
+            request_id=request_id_text,
+            reason="memory_compaction_primary_error",
+        )
+        if fallback_summary is None:
+            logger.error(
+                "memory_compaction_failed request_id=%s provider=%s source_messages=%s",
+                request_id_text,
+                provider_name,
+                len(source_messages),
+            )
+        return fallback_summary
+
+    return _trim_response(
+        content,
+        provider=_provider_name(provider),
+        model=_logged_model(profile.llm_model, _provider_name(provider)),
+        max_chars=max_chars,
+    )
+
+
 def _resolve_profile(profile: BotProfile | None) -> BotProfile:
     if profile is not None:
         return profile
@@ -243,6 +307,41 @@ def load_default_profile() -> BotProfile:
     """Load the configured bot profile for a runtime AI request."""
     settings = get_settings()
     return load_active_bot_profile(settings.bot_profile, settings.bot_profiles_dir)
+
+
+def _memory_summary_prompt(
+    *,
+    existing_summary: str | None,
+    source_messages: list[ChatMessage],
+    max_chars: int,
+) -> list[ChatMessage]:
+    transcript = "\n".join(
+        f"{message['role']}: {message['content']}" for message in source_messages
+    )
+    existing = existing_summary.strip() if existing_summary else "None yet."
+    return [
+        {
+            "role": "system",
+            "content": (
+                "Update the compacted memory for one BotForge user. Keep only "
+                "durable context that may help future replies: dates, tastes, "
+                "preferences, priorities, goals, constraints, and important "
+                "facts. Do not include secrets, credentials, tokens, or private "
+                "identifiers. Do not invent facts. Keep the result under "
+                f"{max_chars} characters."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Existing memory:\n"
+                f"{existing}\n\n"
+                "New messages to compact:\n"
+                f"{transcript}\n\n"
+                "Return only the updated compacted memory."
+            ),
+        },
+    ]
 
 
 def _build_client(host: str, timeout_seconds: int) -> ollama.Client:

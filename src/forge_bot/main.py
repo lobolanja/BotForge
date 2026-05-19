@@ -74,7 +74,9 @@ def log_startup_configuration() -> None:
         "ai_max_response_chars=%s max_message_chars=%s "
         "user_messages_per_minute=%s user_ai_requests_per_hour=%s "
         "chat_messages_per_minute=%s global_active_ai_requests=%s "
-        "global_ai_queue_size=%s admin_invites_per_hour=%s",
+        "global_ai_queue_size=%s admin_invites_per_hour=%s "
+        "memory_enabled=%s memory_recent_messages=%s "
+        "memory_compaction_trigger_messages=%s",
         settings.botforge_env,
         settings.db_host,
         settings.db_port,
@@ -91,6 +93,9 @@ def log_startup_configuration() -> None:
         settings.global_active_ai_requests,
         settings.global_ai_queue_size,
         settings.admin_invites_per_hour,
+        settings.memory_enabled,
+        settings.memory_recent_messages,
+        settings.memory_compaction_trigger_messages,
     )
 
 
