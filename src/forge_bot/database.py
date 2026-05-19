@@ -646,11 +646,47 @@ def status_user(telegram_id: int) -> dict[str, Any] | None:
 def clear_user_memory(user_id: int) -> MemoryClearResult:
     """Clear personalization memory for one internal user.
 
-    The current schema has no memory tables yet. This helper is intentionally
-    stable so future memory work can add table-specific deletes here without
-    changing command behavior.
+    Conversation memory is safe to hard-delete because it is user-controlled
+    personalization data, not invite, policy, or security audit state.
     """
-    return MemoryClearResult()
+    conn = conect_db()
+    if not conn:
+        return MemoryClearResult()
+
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM conversation_messages WHERE user_id = %s",
+                (user_id,),
+            )
+            conversation_memory = int(cursor.rowcount or 0)
+            cursor.execute(
+                "DELETE FROM user_memory_summaries WHERE user_id = %s",
+                (user_id,),
+            )
+            compacted_memory = int(cursor.rowcount or 0)
+            conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception("clear_user_memory_failed user_id=%s", user_id)
+        return MemoryClearResult()
+    finally:
+        conn.close()
+
+    try:
+        from .memory_store import clear_cached_user_memory
+
+        clear_cached_user_memory(user_id=user_id)
+    except Exception:
+        logger.exception(
+            "clear_user_memory_cache_invalidation_failed user_id=%s",
+            user_id,
+        )
+
+    return MemoryClearResult(
+        conversation_memory=conversation_memory,
+        compacted_memory=compacted_memory,
+    )
 
 
 def clear_memory_for_telegram_user(telegram_id: int) -> MemoryClearResult | None:

@@ -59,3 +59,17 @@ def test_user_deletion_controls_migration_tracks_soft_delete_and_requests() -> N
         "CHECK (status IN ('requested', 'confirmed', 'completed', 'failed'))"
         in contents
     )
+
+
+def test_conversation_memory_migration_tracks_recent_and_compacted_memory() -> None:
+    migration = Path("migrations/versions/20260519_0008_create_conversation_memory.py")
+    contents = migration.read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260519_0008"' in contents
+    assert 'down_revision: str | Sequence[str] | None = "20260518_0007"' in contents
+    assert "CREATE TABLE IF NOT EXISTS conversation_messages" in contents
+    assert "bot_profile_id TEXT NOT NULL" in contents
+    assert "summarized_at TIMESTAMPTZ NULL" in contents
+    assert "CHECK (role IN ('user', 'assistant'))" in contents
+    assert "CREATE TABLE IF NOT EXISTS user_memory_summaries" in contents
+    assert "UNIQUE (user_id, bot_profile_id)" in contents

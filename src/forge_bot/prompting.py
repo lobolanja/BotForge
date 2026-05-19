@@ -33,23 +33,44 @@ def assemble_prompt_messages(
         }
     ]
 
+    memory_content = _memory_content(
+        compacted_user_memory=compacted_user_memory,
+        recent_conversation_messages=recent_conversation_messages,
+    )
+    if memory_content:
+        messages.append({"role": "system", "content": memory_content})
+
+    messages.append({"role": "user", "content": current_user_message.strip()})
+    return messages
+
+
+def _memory_content(
+    *,
+    compacted_user_memory: str | None,
+    recent_conversation_messages: Sequence[ChatMessage] | None,
+) -> str | None:
+    sections: list[str] = []
     if compacted_user_memory and compacted_user_memory.strip():
-        messages.append(
-            {
-                "role": "system",
-                "content": "Compacted user memory:\n" + compacted_user_memory.strip(),
-            }
-        )
+        sections.append("Compacted memory:\n" + compacted_user_memory.strip())
 
     if recent_conversation_messages:
-        messages.extend(recent_conversation_messages)
+        transcript = "\n".join(
+            f"{message['role']}: {message['content'].strip()}"
+            for message in recent_conversation_messages
+            if message["content"].strip()
+        )
+        if transcript:
+            sections.append("Recent conversation:\n" + transcript)
 
-    user_content = current_user_message.strip()
-    if user_display_name and user_display_name.strip():
-        user_content = f"{user_display_name.strip()} says: {user_content}"
+    if not sections:
+        return None
 
-    messages.append({"role": "user", "content": user_content})
-    return messages
+    return (
+        "User memory for this same authenticated user and bot profile. "
+        "Use it as previous conversation context. If the user asks about their "
+        "name, preferences, priorities, dates, or earlier statements, answer "
+        "from this memory when it contains the information.\n\n" + "\n\n".join(sections)
+    )
 
 
 def _system_content(

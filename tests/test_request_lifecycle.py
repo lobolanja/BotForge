@@ -47,6 +47,22 @@ def fake_profile() -> BotProfile:
     )
 
 
+def fake_memory_profile() -> BotProfile:
+    return BotProfile(
+        bot_profile_id="default_dev",
+        bot_display_name="BotForge",
+        bot_description="Test profile",
+        system_prompt="Be helpful.",
+        domain_rules=("Do not leak secrets.",),
+        disclaimer_text="Test only.",
+        default_language="en",
+        llm_provider="ollama",
+        llm_model="test-model",
+        memory_enabled=True,
+        analytics_enabled=False,
+    )
+
+
 def fake_update(*, update_id: int = 1001, text: str = "hello") -> SimpleNamespace:
     return SimpleNamespace(
         update_id=update_id,
@@ -232,6 +248,76 @@ async def test_engine_receives_wait_time_after_global_ai_lease(
 
     assert update.message.replies == ["done"]
     assert queue_waits == [12]
+
+
+@pytest.mark.asyncio
+async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    update = fake_update(update_id=3005)
+    answer_kwargs: list[dict[str, object]] = []
+    stored_turns: list[dict[str, object]] = []
+
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"id": 55, "status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"id": 55, "status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_memory_profile)
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(
+        router,
+        "get_user_by_telegram_id",
+        lambda telegram_id: {"id": 777, "username": "ada"},
+    )
+    monkeypatch.setattr(
+        router,
+        "get_memory_context",
+        lambda **kwargs: SimpleNamespace(
+            compacted_user_memory="Prefers vegetarian dinners.",
+            recent_conversation_messages=[
+                {"role": "user", "content": "I am vegetarian."}
+            ],
+        ),
+    )
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile
+        answer_kwargs.append(kwargs)
+        return "try a vegetable stew"
+
+    async def store_turn(**kwargs: object) -> None:
+        stored_turns.append(kwargs)
+
+    monkeypatch.setattr(engine, "answer", answer)
+    monkeypatch.setattr(router, "add_successful_turn", store_turn)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == ["try a vegetable stew"]
+    assert answer_kwargs[0]["compacted_user_memory"] == "Prefers vegetarian dinners."
+    assert answer_kwargs[0]["recent_conversation_messages"] == [
+        {"role": "user", "content": "I am vegetarian."}
+    ]
+    assert stored_turns[0]["user_id"] == 777
+    assert stored_turns[0]["bot_profile_id"] == "default_dev"
+    assert stored_turns[0]["user_message"] == "hello"
+    assert stored_turns[0]["assistant_message"] == "try a vegetable stew"
 
 
 @pytest.mark.asyncio

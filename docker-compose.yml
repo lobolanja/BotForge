@@ -70,7 +70,7 @@ services:
     restart: "no"
     environment:
       OLLAMA_HOST: http://ollama:11434
-    command: ["pull", "${OLLAMA_MODEL:-gemma3:2b}"]
+    command: ["pull", "${OLLAMA_MODEL:-gemma3:4b}"]
     depends_on:
       ollama:
         condition: service_healthy
