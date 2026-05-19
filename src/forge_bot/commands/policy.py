@@ -11,22 +11,42 @@ from forge_bot.database import (
     has_current_policy_acceptance,
     verify_user,
 )
+from forge_bot.messages import build_message
 
 IDENTITY_UNAVAILABLE_MESSAGE = (
     "Identity checks are temporarily unavailable. Please try again in a moment."
 )
-ACCEPT_UNLINKED_MESSAGE = "Open your Telegram invite link before accepting the policy."
-DECLINE_UNLINKED_MESSAGE = "Open your Telegram invite link before declining the policy."
-ACCEPT_SUCCESS_MESSAGE = "Policy accepted. You can now send me a message."
+ACCEPT_UNLINKED_MESSAGE = build_message(
+    "I could not accept the policy because your identity is not linked.",
+    actions=("/start",),
+)
+DECLINE_UNLINKED_MESSAGE = build_message(
+    "I could not decline the policy because your identity is not linked.",
+    actions=("/start",),
+)
+ACCEPT_SUCCESS_MESSAGE = build_message(
+    "Policy accepted.",
+    details=(("Next step", "You can now send me a message"),),
+)
 ACCEPT_ALREADY_ACCEPTED_MESSAGE = (
-    "You already accepted the current policy. You can send me a message."
+    "You already accepted the current policy."
 )
-ACCEPT_UNAVAILABLE_MESSAGE = "Policy acceptance is temporarily unavailable."
-DECLINE_SUCCESS_MESSAGE = (
-    "Policy declined. I will not process protected chat messages unless you "
-    "accept the policy later."
+ACCEPT_UNAVAILABLE_MESSAGE = (
+    "Policy acceptance is temporarily unavailable. Please try again in a moment."
 )
-DECLINE_UNAVAILABLE_MESSAGE = "Policy decline is temporarily unavailable."
+DECLINE_SUCCESS_MESSAGE = build_message(
+    "Policy declined.",
+    details=(
+        (
+            "What happens next",
+            "Protected chat messages will stay unavailable until you accept the policy",
+        ),
+    ),
+    actions=("/policy", "/accept_policy", "/privacy"),
+)
+DECLINE_UNAVAILABLE_MESSAGE = (
+    "Policy decline is temporarily unavailable. Please try again in a moment."
+)
 POLICY_ACCEPT_CALLBACK = "policy:accept"
 POLICY_DECLINE_CALLBACK = "policy:decline"
 
@@ -39,13 +59,14 @@ PolicyActionStatus = Literal[
 ]
 
 POLICY_PROMPT_INTRO = (
-    "Please review the usage policy before using BotForge.\n\n"
+    "Please review the current BotForge usage policy before continuing.\n\n"
     "By accepting, you confirm that you understand how the bot may store "
-    "messages, memory, files, and optional analytics data according to the "
-    "current policy."
+    "messages, memory, and optional analytics data according to the current "
+    "policy."
 )
-POLICY_COMMAND_FALLBACK = (
-    "You can use the buttons below or the /accept_policy and /decline_policy commands."
+POLICY_COMMAND_FALLBACK = build_message(
+    "Choose how you want to continue.",
+    actions=("/accept_policy", "/decline_policy", "/privacy"),
 )
 
 
@@ -88,16 +109,16 @@ async def policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "BotForge usage policy\n\n"
         f"Policy version: {versions.policy_version}\n"
         f"Privacy notice version: {versions.privacy_notice_version}\n\n"
-        "This bot processes Telegram messages to provide AI-assisted replies. "
-        "It can be wrong and does not replace professional judgment. Do not "
-        "send illegal content, credentials, secrets, or unnecessary sensitive "
-        "personal data. BotForge may store your Telegram user id, messages, "
-        "timestamps, interactions, uploaded files if enabled, and technical "
-        "logs needed to operate the service. Conversation memory may be used "
-        "to provide better answers. Optional analytics or training consent is "
-        "separate and defaults to off. "
-        "\n\nDo you accept this policy?"
-        f"\n{POLICY_COMMAND_FALLBACK}"
+        "BotForge processes Telegram messages to provide AI-assisted replies. "
+        "It can be wrong and does not replace professional judgment.\n\n"
+        "Do not send illegal content, credentials, secrets, or unnecessary "
+        "sensitive personal data.\n\n"
+        "BotForge may store your Telegram user id, messages, timestamps, "
+        "interactions, conversation memory, and technical logs needed to "
+        "operate the service. Optional analytics or training consent is "
+        "separate and defaults to off.\n\n"
+        "Do you accept this policy?\n\n"
+        f"{POLICY_COMMAND_FALLBACK}"
     )
     if settings.bot_policy_url:
         text = f"{text}\n\nFull policy: {settings.bot_policy_url}"

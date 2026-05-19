@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from forge_bot.database import is_admin
+from forge_bot.messages import build_message
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -11,25 +12,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     admin = is_admin(update.effective_user.id)
 
     help_text = (
-        "Comandos disponibles:\n"
-        "/greet - Saluda al usuario\n"
-        "/ping - Verifica la latencia del bot\n"
-        "/translate - Traducir texto a otro idioma\n"
-        "/time - Muestra la hora actual\n"
-        "/help - Muestra los comandos disponibles\n"
-        "/status - Verifica tu identidad vinculada\n"
-        "/policy - Muestra la politica de uso\n"
-        "/accept_policy - Aceptar la politica de uso\n"
-        "/decline_policy - Rechazar la politica de uso\n"
-        "/privacy - Ver que datos guarda BotForge\n"
-        "/memory_clear - Borrar memoria de personalizacion\n"
-        "/delete_my_data - Solicitar borrado de tus datos\n"
+        "Available commands\n\n"
+        "/greet - Say hello.\n"
+        "/ping - Check bot latency.\n"
+        "/translate - Translate text.\n"
+        "/time - Show the current time.\n"
+        "/help - Show this command list.\n"
+        "/status - Check your linked identity.\n"
+        "/policy - Review the usage policy.\n"
+        "/accept_policy - Accept the current policy.\n"
+        "/decline_policy - Decline the current policy.\n"
+        "/privacy - Review stored data and controls.\n"
+        "/memory_clear - Clear personalization memory.\n"
+        "/delete_my_data - Start data deletion."
     )
     if admin:
         help_text += (
-            "\nComandos de administrador:\n"
-            "/invite <role> <email> - Generar un enlace de invitacion\n"
-            "/campaign_invite <role> <expires_at> <max_uses> - "
-            "Generar un enlace de campana\n"
+            "\n\nAdmin commands\n"
+            "/invite <role> <email> - Create a single-use invite link.\n"
+            "/campaign_invite <role> <expires_at> <max_uses> - Create a "
+            "reusable campaign invite link."
         )
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(build_message(help_text))

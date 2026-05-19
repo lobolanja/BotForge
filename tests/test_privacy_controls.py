@@ -62,7 +62,7 @@ async def test_memory_clear_clears_linked_user_memory(
 
     assert calls == [456]
     assert update.message.replies == [
-        "Personalization memory has been cleared for your account."
+        "Memory cleared.\n\nPersonalization memory has been removed for this account."
     ]
 
 
@@ -78,7 +78,9 @@ async def test_memory_clear_reports_unlinked_user(
 
     await memory_clear(update, create_context())
 
-    assert update.message.replies == ["No linked BotForge account was found to clear."]
+    assert update.message.replies == [
+        "I could not clear memory because no linked BotForge account was found."
+    ]
 
 
 @pytest.mark.asyncio
@@ -124,8 +126,7 @@ async def test_delete_my_data_confirm_deletes_linked_user(
 
     assert calls == [456]
     assert update.message.replies == [
-        "Your BotForge data deletion is complete. "
-        "Your Telegram identity is no longer linked."
+        "Data deletion complete.\n\nYour Telegram identity is no longer linked to BotForge."
     ]
 
 
@@ -156,4 +157,6 @@ async def test_delete_my_data_confirm_reports_unlinked_user(
 
     await delete_my_data(update, create_context(args=["CONFIRM"]))
 
-    assert update.message.replies == ["No linked BotForge account was found."]
+    assert update.message.replies == [
+        "I could not delete data because no linked BotForge account was found."
+    ]

@@ -103,7 +103,7 @@ async def test_campaign_invite_invalid_role_rejected(admin_patches) -> None:
         create_context(args=["invalid_role", "2026-06-30", "100"]),
     )
 
-    assert "Invalid role" in update.message.replies[0]
+    assert "supported role" in update.message.replies[0]
 
 
 @pytest.mark.asyncio
@@ -123,7 +123,7 @@ async def test_campaign_invite_invalid_expiration_rejected(admin_patches) -> Non
     update = create_update(user_id=123)
     await campaign_invite(update, create_context(args=["user", "06-30-2026", "100"]))
 
-    assert "Invalid expiration date" in update.message.replies[0]
+    assert "expiration date is invalid" in update.message.replies[0]
 
 
 @pytest.mark.asyncio
@@ -131,7 +131,7 @@ async def test_campaign_invite_invalid_max_uses_rejected(admin_patches) -> None:
     update = create_update(user_id=123)
     await campaign_invite(update, create_context(args=["user", "2026-06-30", "many"]))
 
-    assert "Invalid max uses" in update.message.replies[0]
+    assert "max uses must be a positive integer" in update.message.replies[0]
 
 
 @pytest.mark.asyncio
@@ -152,6 +152,7 @@ async def test_campaign_invite_creation_validation_error(
         await campaign_invite(update, create_context(args=["user", "2026-06-30", "0"]))
 
     assert "max uses must be positive" in update.message.replies[0]
+    assert "/campaign_invite <role> <expires_at> <max_uses>" in update.message.replies[0]
 
 
 @pytest.mark.asyncio

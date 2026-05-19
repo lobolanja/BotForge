@@ -2,21 +2,31 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from forge_bot.database import redeem_invite_token, status_user
+from forge_bot.messages import build_message
 
 from .policy import policy_action_keyboard, policy_prompt
 
-INVITE_PROMPT = "Welcome to BotForge. Open your invite link to connect your identity."
-ALREADY_LINKED_START = (
-    "Welcome back to BotForge. This Telegram account is already linked."
+INVITE_PROMPT = build_message(
+    "Welcome to BotForge.",
+    details=(("Next step", "Open your invite link to connect your identity"),),
+)
+ALREADY_LINKED_START = build_message(
+    "Welcome back to BotForge.",
+    details=(("Status", "This Telegram account is already linked"),),
 )
 REDEMPTION_FAILURE_MESSAGES = {
-    "already_linked": "This Telegram account is already linked.",
-    "expired": "This invite link has expired.",
-    "used": "This invite link has already been used.",
-    "campaign_full": "This campaign invite link is full.",
-    "invalid": "This invite link is invalid.",
+    "already_linked": build_message(
+        "This Telegram account is already linked.",
+        actions=("/status",),
+    ),
+    "expired": "I could not accept that invite because it has expired.",
+    "used": "I could not accept that invite because it has already been used.",
+    "campaign_full": "I could not accept that invite because it has reached its use limit.",
+    "invalid": "I could not accept that invite because it is invalid.",
 }
-REDEMPTION_UNAVAILABLE = "Invite identity connection is temporarily unavailable."
+REDEMPTION_UNAVAILABLE = (
+    "Invite redemption is temporarily unavailable. Please try again in a moment."
+)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -48,7 +58,7 @@ async def _reply_to_invite_redemption(
     redemption = redeem_invite_token(token, telegram_id)
     if redemption.status == "success":
         await update.message.reply_text(
-            f"Invite accepted.\n\n{policy_prompt()}",
+            f"{build_message('Invite accepted.')}\n\n{policy_prompt()}",
             reply_markup=policy_action_keyboard(),
         )
         return
@@ -69,12 +79,25 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         email = user.get("email")
         if email:
             await update.message.reply_text(
-                f"Your Telegram identity is linked to {email} "
-                f"with role: {user['role']}."
+                build_message(
+                    "Identity linked.",
+                    details=(
+                        ("Email", str(email)),
+                        ("Role", str(user["role"])),
+                    ),
+                )
             )
             return
         await update.message.reply_text(
-            f"Your Telegram identity is linked with role: {user['role']}."
+            build_message(
+                "Identity linked.",
+                details=(("Role", str(user["role"])),),
+            )
         )
     else:
-        await update.message.reply_text("Your Telegram identity is not linked yet.")
+        await update.message.reply_text(
+            build_message(
+                "Identity not linked.",
+                details=(("Next step", "Open your invite link to connect your account"),),
+            )
+        )

@@ -8,6 +8,7 @@ from forge_bot.database import (
     confirm_user_deletion,
     request_user_deletion,
 )
+from forge_bot.messages import usage_message
 
 PRIVACY_TEXT = (
     "BotForge data controls\n\n"
@@ -15,9 +16,9 @@ PRIVACY_TEXT = (
     "acceptance status, and operational message state needed to recover from "
     "failures.\n\n"
     "If memory is enabled, BotForge stores recent conversation context and "
-    "compacted memory for personalization. If analytics or file upload "
-    "features are enabled later, BotForge will document those records and "
-    "their deletion behavior before use.\n\n"
+    "compacted memory for personalization. If analytics features are enabled "
+    "later, BotForge will document those records and their deletion behavior "
+    "before use.\n\n"
     "Available commands:\n"
     "/memory_clear - Clear personalization memory.\n"
     "/delete_my_data - Start broader account data deletion."
@@ -51,12 +52,12 @@ async def memory_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     result = clear_memory_for_telegram_user(update.effective_user.id)
     if result is None:
         await update.message.reply_text(
-            "No linked BotForge account was found to clear."
+            "I could not clear memory because no linked BotForge account was found."
         )
         return
 
     await update.message.reply_text(
-        "Personalization memory has been cleared for your account."
+        "Memory cleared.\n\nPersonalization memory has been removed for this account."
     )
 
 
@@ -70,18 +71,20 @@ async def delete_my_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         result = confirm_user_deletion(update.effective_user.id)
         if result.status == "deleted":
             await update.message.reply_text(
-                "Your BotForge data deletion is complete. "
-                "Your Telegram identity is no longer linked."
+                "Data deletion complete.\n\nYour Telegram identity is no longer "
+                "linked to BotForge."
             )
             return
         if result.status == "manual_review_requested":
             await update.message.reply_text(
-                "Your deletion request is confirmed and queued for manual owner "
-                "review because this account has administrator access."
+                "Deletion request confirmed.\n\nThis account has administrator "
+                "access, so the request was queued for manual owner review."
             )
             return
         if result.status == "not_linked":
-            await update.message.reply_text("No linked BotForge account was found.")
+            await update.message.reply_text(
+                "I could not delete data because no linked BotForge account was found."
+            )
             return
 
         await update.message.reply_text(
@@ -91,13 +94,15 @@ async def delete_my_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if args:
         await update.message.reply_text(
-            "Usage: /delete_my_data or /delete_my_data CONFIRM"
+            usage_message("/delete_my_data", example="/delete_my_data CONFIRM")
         )
         return
 
     result = request_user_deletion(update.effective_user.id)
     if result.status == "not_linked":
-        await update.message.reply_text("No linked BotForge account was found.")
+        await update.message.reply_text(
+            "I could not start deletion because no linked BotForge account was found."
+        )
         return
     if result.status == "db_error":
         await update.message.reply_text(

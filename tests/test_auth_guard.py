@@ -34,4 +34,4 @@ async def test_admin_required_denies_non_admin(monkeypatch: pytest.MonkeyPatch) 
     await wrapped(update, context)
 
     assert not called
-    assert message.replies == ["Access denied. Admins only."]
+    assert message.replies == [auth_guard.ADMINS_ONLY_MESSAGE]
