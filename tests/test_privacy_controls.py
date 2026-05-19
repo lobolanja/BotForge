@@ -126,7 +126,8 @@ async def test_delete_my_data_confirm_deletes_linked_user(
 
     assert calls == [456]
     assert update.message.replies == [
-        "Data deletion complete.\n\nYour Telegram identity is no longer linked to BotForge."
+        "Data deletion complete.\n\n"
+        "Your Telegram identity is no longer linked to BotForge."
     ]
 
 

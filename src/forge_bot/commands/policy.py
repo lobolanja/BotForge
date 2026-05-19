@@ -28,9 +28,7 @@ ACCEPT_SUCCESS_MESSAGE = build_message(
     "Policy accepted.",
     details=(("Next step", "You can now send me a message"),),
 )
-ACCEPT_ALREADY_ACCEPTED_MESSAGE = (
-    "You already accepted the current policy."
-)
+ACCEPT_ALREADY_ACCEPTED_MESSAGE = "You already accepted the current policy."
 ACCEPT_UNAVAILABLE_MESSAGE = (
     "Policy acceptance is temporarily unavailable. Please try again in a moment."
 )

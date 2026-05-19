@@ -152,7 +152,9 @@ async def test_campaign_invite_creation_validation_error(
         await campaign_invite(update, create_context(args=["user", "2026-06-30", "0"]))
 
     assert "max uses must be positive" in update.message.replies[0]
-    assert "/campaign_invite <role> <expires_at> <max_uses>" in update.message.replies[0]
+    assert (
+        "/campaign_invite <role> <expires_at> <max_uses>" in update.message.replies[0]
+    )
 
 
 @pytest.mark.asyncio

@@ -57,8 +57,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     persisted = persist_update(update)
     if persisted is None:
         await update.message.reply_text(
-            "Message storage is temporarily unavailable. Please try again in a "
-            "moment."
+            "Message storage is temporarily unavailable. Please try again in a moment."
         )
         return
 

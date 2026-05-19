@@ -107,8 +107,7 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not token_result:
         await update.message.reply_text(
-            "Invite creation is temporarily unavailable. Please try again in a "
-            "moment."
+            "Invite creation is temporarily unavailable. Please try again in a moment."
         )
         return
 

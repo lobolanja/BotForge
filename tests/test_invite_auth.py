@@ -50,7 +50,8 @@ async def test_start_without_token_shows_invite_identity_copy(
 
     assert not called
     assert update.message.replies == [
-        "Welcome to BotForge.\n\nNext step: Open your invite link to connect your identity"
+        "Welcome to BotForge.\n\n"
+        "Next step: Open your invite link to connect your identity"
     ]
 
 
@@ -102,7 +103,8 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
     await start(update, create_context(args=["token-123"]))
 
     assert update.message.replies == [
-        "Welcome to BotForge.\n\nNext step: Open your invite link to connect your identity",
+        "Welcome to BotForge.\n\n"
+        "Next step: Open your invite link to connect your identity",
         "Invite accepted.\n\nPolicy prompt",
     ]
     assert update.message.reply_calls[-1]["reply_markup"] is reply_markup
@@ -121,7 +123,8 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
         ),
         (
             "db_error",
-            "Invite redemption is temporarily unavailable. Please try again in a moment.",
+            "Invite redemption is temporarily unavailable. "
+            "Please try again in a moment.",
         ),
     ],
 )
@@ -199,9 +202,7 @@ async def test_status_handles_campaign_identity_without_email(
 
     await status(update, create_context())
 
-    assert update.message.replies == [
-        "Identity linked.\n\nRole: user"
-    ]
+    assert update.message.replies == ["Identity linked.\n\nRole: user"]
 
 
 @pytest.mark.asyncio
@@ -214,5 +215,6 @@ async def test_status_reports_unlinked_identity(
     await status(update, create_context())
 
     assert update.message.replies == [
-        "Identity not linked.\n\nNext step: Open your invite link to connect your account"
+        "Identity not linked.\n\n"
+        "Next step: Open your invite link to connect your account"
     ]

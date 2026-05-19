@@ -21,7 +21,9 @@ REDEMPTION_FAILURE_MESSAGES = {
     ),
     "expired": "I could not accept that invite because it has expired.",
     "used": "I could not accept that invite because it has already been used.",
-    "campaign_full": "I could not accept that invite because it has reached its use limit.",
+    "campaign_full": (
+        "I could not accept that invite because it has reached its use limit."
+    ),
     "invalid": "I could not accept that invite because it is invalid.",
 }
 REDEMPTION_UNAVAILABLE = (
@@ -98,6 +100,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             build_message(
                 "Identity not linked.",
-                details=(("Next step", "Open your invite link to connect your account"),),
+                details=(
+                    ("Next step", "Open your invite link to connect your account"),
+                ),
             )
         )
