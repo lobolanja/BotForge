@@ -427,14 +427,14 @@ After becoming an admin, use the `/invite` command to generate invite links with
 **Response:**
 
 ```text
-Invite link created!
-
-Invite link:
-https://t.me/my_bot?start=abcd1234...
+Invite link created.
 
 Role: user
 Email: person@example.com
 Expires: 2026-05-09 12:00:00 UTC
+
+Link:
+https://t.me/my_bot?start=abcd1234...
 ```
 
 **Available roles:**
@@ -463,6 +463,19 @@ Example:
 
 ```text
 /campaign_invite user 2026-06-30 100
+```
+
+Response:
+
+```text
+Campaign invite link created.
+
+Role: user
+Expires: 2026-06-30 23:59:59 UTC
+Max uses: 100
+
+Link:
+https://t.me/my_bot?start=abcd1234...
 ```
 
 The bot returns one reusable link. It can be redeemed until the end of the

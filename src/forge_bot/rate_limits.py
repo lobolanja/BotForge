@@ -24,7 +24,8 @@ BOT_BUSY_MESSAGE = (
     "I am processing too many requests right now. Please wait a moment and try again."
 )
 ADMIN_INVITE_RATE_LIMIT_MESSAGE = (
-    "Too many invites have been created recently. Please wait before generating more."
+    "Invite creation is temporarily limited. Please wait a moment before "
+    "creating another link."
 )
 
 

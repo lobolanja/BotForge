@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from forge_bot.database import has_current_policy_acceptance, is_admin, verify_user
+from forge_bot.messages import build_message
 
 Handler = Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[Any, Any, None]]
 IDENTITY_UNAVAILABLE_MESSAGE = (
@@ -17,9 +18,10 @@ INVITE_REQUIRED_MESSAGE = (
 ADMIN_LOGIN_REQUIRED_MESSAGE = (
     "Access denied. Please log in before using this admin command."
 )
-POLICY_REQUIRED_MESSAGE = (
-    "Please accept the current usage policy before using BotForge. "
-    "Use /policy and then /accept_policy."
+ADMINS_ONLY_MESSAGE = "Access denied. Admins only."
+POLICY_REQUIRED_MESSAGE = build_message(
+    "Please accept the current usage policy before continuing.",
+    actions=("/policy", "/accept_policy", "/decline_policy"),
 )
 
 
@@ -93,7 +95,7 @@ async def _require_admin(update: Update, user_id: int) -> bool:
         await update.message.reply_text(IDENTITY_UNAVAILABLE_MESSAGE)
         return False
     if not admin:
-        await update.message.reply_text("Access denied. Admins only.")
+        await update.message.reply_text(ADMINS_ONLY_MESSAGE)
         return False
     return True
 

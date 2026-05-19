@@ -57,7 +57,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     persisted = persist_update(update)
     if persisted is None:
         await update.message.reply_text(
-            "I could not store your message safely. Please try again in a moment."
+            "Message storage is temporarily unavailable. Please try again in a moment."
         )
         return
 
@@ -188,7 +188,8 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     except Exception as exc:
         mark_failed(update.update_id, type(exc).__name__)
         await update.message.reply_text(
-            "Sorry, I could not finish that message. It has been stored for review."
+            "I could not finish that message right now. It has been stored for "
+            "review. Please try again in a moment."
         )
     finally:
         await ai_lease.release()

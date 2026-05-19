@@ -10,9 +10,13 @@ from forge_bot.database import (
     get_user_by_telegram_id,
     normalize_invite_email,
 )
+from forge_bot.messages import build_message, usage_message, validation_message
 
 from .auth_guard import admin_required
 from .rate_limit_guard import reply_if_admin_invite_limited
+
+INVITE_USAGE = "/invite <role> <email>"
+INVITE_EXAMPLE = "/invite user person@example.com"
 
 
 @admin_required
@@ -22,22 +26,28 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     args = context.args or []
-    usage = "Usage: /invite <role> <email>\n\nExample: /invite user person@example.com"
+    usage = usage_message(INVITE_USAGE, example=INVITE_EXAMPLE)
     if len(args) == 0:
         await update.message.reply_text(usage)
         return
 
     if len(args) == 1:
         await update.message.reply_text(
-            "Error: Missing email address.\n\n"
-            "Usage: /invite <role> <email>\n\n"
-            "Example: /invite user person@example.com"
+            validation_message(
+                "the email address is missing",
+                command=INVITE_USAGE,
+                example=INVITE_EXAMPLE,
+            )
         )
         return
 
     if len(args) > 2:
         await update.message.reply_text(
-            "Error: Too many arguments.\n\nUsage: /invite <role> <email>"
+            validation_message(
+                "too many arguments were provided",
+                command=INVITE_USAGE,
+                example=INVITE_EXAMPLE,
+            )
         )
         return
 
@@ -45,31 +55,43 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     requested_email = normalize_invite_email(args[1])
 
     if requested_role in RESERVED_INVITE_ROLES:
-        await update.message.reply_text("The 'professional' role is not available yet.")
+        await update.message.reply_text(
+            "I could not create the invite because the 'professional' role is not "
+            "available yet."
+        )
         return
 
     if requested_role not in VALID_INVITE_ROLES:
         roles_list = ", ".join(sorted(VALID_INVITE_ROLES))
         await update.message.reply_text(
-            f"Invalid role '{requested_role}'.\n\nAvailable roles: {roles_list}."
+            f"I could not create the invite because '{requested_role}' is not a "
+            f"supported role.\n\nAvailable roles: {roles_list}.\n\n"
+            f"{usage_message(INVITE_USAGE, example=INVITE_EXAMPLE)}"
         )
         return
 
     if requested_email is None:
         await update.message.reply_text(
-            "Invalid email address.\n\nUsage: /invite <role> <email>"
+            validation_message(
+                "the email address is invalid",
+                command=INVITE_USAGE,
+                example=INVITE_EXAMPLE,
+            )
         )
         return
 
     admin_user = get_user_by_telegram_id(update.effective_user.id)
     if not admin_user:
-        await update.message.reply_text("Error: Could not retrieve admin information.")
+        await update.message.reply_text(
+            "Admin details are temporarily unavailable. Please try again in a moment."
+        )
         return
 
     bot_username = context.bot.username
     if not bot_username:
         await update.message.reply_text(
-            "Error: Bot username not configured. Please contact the administrator."
+            "Invite creation is temporarily unavailable. Please contact the "
+            "administrator."
         )
         return
 
@@ -85,18 +107,19 @@ async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if not token_result:
         await update.message.reply_text(
-            "Error: Could not generate invite token. Please try again later."
+            "Invite creation is temporarily unavailable. Please try again in a moment."
         )
         return
 
     expires_at_str = token_result.expires_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-    response = (
-        "Invite link created!\n\n"
-        "Invite link:\n"
-        f"{token_result.invite_link}\n\n"
-        f"Role: {requested_role}\n"
-        f"Email: {requested_email}\n"
-        f"Expires: {expires_at_str}"
+    response = build_message(
+        "Invite link created.",
+        details=(
+            ("Role", requested_role),
+            ("Email", requested_email),
+            ("Expires", expires_at_str),
+        ),
+        link=token_result.invite_link,
     )
 
     await update.message.reply_text(response)

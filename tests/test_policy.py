@@ -101,7 +101,9 @@ async def test_accept_policy_stores_acceptance(monkeypatch: pytest.MonkeyPatch) 
     await accept_policy(update, SimpleNamespace())
 
     assert calls == [456]
-    assert update.message.replies == ["Policy accepted. You can now send me a message."]
+    assert update.message.replies == [
+        "Policy accepted.\n\nNext step: You can now send me a message"
+    ]
 
 
 @pytest.mark.asyncio
@@ -120,8 +122,13 @@ async def test_decline_policy_keeps_user_blocked(
 
     assert update.message.replies == [
         (
-            "Policy declined. I will not process protected chat messages unless "
-            "you accept the policy later."
+            "Policy declined.\n\n"
+            "What happens next: Protected chat messages will stay unavailable "
+            "until you accept the policy\n\n"
+            "Available actions:\n"
+            "/policy\n"
+            "/accept_policy\n"
+            "/privacy"
         )
     ]
 
@@ -152,9 +159,7 @@ async def test_accept_policy_reports_already_accepted(
     await accept_policy(update, SimpleNamespace())
 
     assert not called
-    assert update.message.replies == [
-        "You already accepted the current policy. You can send me a message."
-    ]
+    assert update.message.replies == ["You already accepted the current policy."]
 
 
 @pytest.mark.asyncio
@@ -179,7 +184,7 @@ async def test_accept_policy_callback_stores_acceptance(
     assert update.callback_query.answers == 1
     assert calls == [456]
     assert update.callback_query.message.replies == [
-        "Policy accepted. You can now send me a message."
+        "Policy accepted.\n\nNext step: You can now send me a message"
     ]
 
 
@@ -200,8 +205,13 @@ async def test_decline_policy_callback_replies_and_answers(
     assert update.callback_query.answers == 1
     assert update.callback_query.message.replies == [
         (
-            "Policy declined. I will not process protected chat messages unless "
-            "you accept the policy later."
+            "Policy declined.\n\n"
+            "What happens next: Protected chat messages will stay unavailable "
+            "until you accept the policy\n\n"
+            "Available actions:\n"
+            "/policy\n"
+            "/accept_policy\n"
+            "/privacy"
         )
     ]
 
@@ -222,7 +232,7 @@ async def test_accept_policy_callback_reports_already_accepted(
 
     assert update.callback_query.answers == 1
     assert update.callback_query.message.replies == [
-        "You already accepted the current policy. You can send me a message."
+        "You already accepted the current policy."
     ]
 
 
@@ -238,7 +248,9 @@ async def test_accept_policy_callback_reports_unlinked_user(
 
     assert update.callback_query.answers == 1
     assert update.callback_query.message.replies == [
-        "Open your Telegram invite link before accepting the policy."
+        "I could not accept the policy because your identity is not linked.\n\n"
+        "Available actions:\n"
+        "/start"
     ]
 
 
@@ -254,7 +266,7 @@ async def test_accept_policy_callback_handles_database_failure(
 
     assert update.callback_query.answers == 1
     assert update.callback_query.message.replies == [
-        "Policy acceptance is temporarily unavailable."
+        "Policy acceptance is temporarily unavailable. Please try again in a moment."
     ]
 
 
@@ -280,8 +292,11 @@ async def test_protected_handler_blocks_missing_policy(
 
     assert not called
     assert update.message.replies == [
-        "Please accept the current usage policy before using BotForge. "
-        "Use /policy and then /accept_policy."
+        "Please accept the current usage policy before continuing.\n\n"
+        "Available actions:\n"
+        "/policy\n"
+        "/accept_policy\n"
+        "/decline_policy"
     ]
 
 
