@@ -86,6 +86,38 @@ class ConversationMemoryStore:
         request_id: str | None = None,
         summarizer: MemorySummarizer | None = None,
     ) -> None:
+        stored = self.store_successful_turn(
+            user_id=user_id,
+            bot_profile_id=bot_profile_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            telegram_chat_id=telegram_chat_id,
+            telegram_message_id=telegram_message_id,
+            inbound_message_id=inbound_message_id,
+            request_id=request_id,
+        )
+        if not stored:
+            return
+
+        if summarizer is not None:
+            await self.compact_memory_if_needed(
+                user_id=user_id,
+                bot_profile_id=bot_profile_id,
+                summarizer=summarizer,
+            )
+
+    def store_successful_turn(
+        self,
+        *,
+        user_id: int,
+        bot_profile_id: str,
+        user_message: str,
+        assistant_message: str,
+        telegram_chat_id: int | None = None,
+        telegram_message_id: int | None = None,
+        inbound_message_id: int | None = None,
+        request_id: str | None = None,
+    ) -> bool:
         cached = self._get_or_load(user_id=user_id, bot_profile_id=bot_profile_id)
         new_messages = self._insert_turn(
             user_id=user_id,
@@ -98,7 +130,7 @@ class ConversationMemoryStore:
             request_id=request_id,
         )
         if not new_messages:
-            return
+            return False
 
         settings = get_settings()
         with self._lock:
@@ -106,14 +138,22 @@ class ConversationMemoryStore:
             cached.recent_messages = cached.recent_messages[
                 -settings.memory_recent_messages :
             ]
+        return True
 
-        if summarizer is not None:
-            await self._compact_if_needed(
-                user_id=user_id,
-                bot_profile_id=bot_profile_id,
-                cached=cached,
-                summarizer=summarizer,
-            )
+    async def compact_memory_if_needed(
+        self,
+        *,
+        user_id: int,
+        bot_profile_id: str,
+        summarizer: MemorySummarizer,
+    ) -> None:
+        cached = self._get_or_load(user_id=user_id, bot_profile_id=bot_profile_id)
+        await self._compact_if_needed(
+            user_id=user_id,
+            bot_profile_id=bot_profile_id,
+            cached=cached,
+            summarizer=summarizer,
+        )
 
     def clear_cached_user(
         self,
@@ -532,6 +572,29 @@ def get_memory_context(
     )
 
 
+def store_successful_turn(
+    *,
+    user_id: int,
+    bot_profile_id: str,
+    user_message: str,
+    assistant_message: str,
+    telegram_chat_id: int | None = None,
+    telegram_message_id: int | None = None,
+    inbound_message_id: int | None = None,
+    request_id: str | None = None,
+) -> bool:
+    return memory_store.store_successful_turn(
+        user_id=user_id,
+        bot_profile_id=bot_profile_id,
+        user_message=user_message,
+        assistant_message=assistant_message,
+        telegram_chat_id=telegram_chat_id,
+        telegram_message_id=telegram_message_id,
+        inbound_message_id=inbound_message_id,
+        request_id=request_id,
+    )
+
+
 async def add_successful_turn(
     *,
     user_id: int,
@@ -553,6 +616,19 @@ async def add_successful_turn(
         telegram_message_id=telegram_message_id,
         inbound_message_id=inbound_message_id,
         request_id=request_id,
+        summarizer=summarizer,
+    )
+
+
+async def compact_memory_if_needed(
+    *,
+    user_id: int,
+    bot_profile_id: str,
+    summarizer: MemorySummarizer,
+) -> None:
+    await memory_store.compact_memory_if_needed(
+        user_id=user_id,
+        bot_profile_id=bot_profile_id,
         summarizer=summarizer,
     )
 

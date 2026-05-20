@@ -305,7 +305,12 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
         stored_turns.append(kwargs)
 
     monkeypatch.setattr(engine, "answer", answer)
-    monkeypatch.setattr(router, "add_successful_turn", store_turn)
+    monkeypatch.setattr(
+        router,
+        "store_successful_turn",
+        lambda **kwargs: stored_turns.append(kwargs) or True,
+    )
+    monkeypatch.setattr(router, "_compact_successful_turn", store_turn)
 
     await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
 
@@ -318,6 +323,102 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
     assert stored_turns[0]["bot_profile_id"] == "default_dev"
     assert stored_turns[0]["user_message"] == "hello"
     assert stored_turns[0]["assistant_message"] == "try a vegetable stew"
+
+
+@pytest.mark.asyncio
+async def test_memory_compaction_runs_after_ai_lease_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    update = fake_update(update_id=3006)
+    events: list[str] = []
+
+    class FakeLease:
+        def __init__(self) -> None:
+            self.released = False
+
+        async def release(self) -> None:
+            self.released = True
+            events.append("release")
+
+    lease = FakeLease()
+
+    class FakeLimiter:
+        def check_message_length(
+            self, *, user_id: int, chat_id: int, text: str
+        ) -> SimpleNamespace:
+            del user_id, chat_id, text
+            return SimpleNamespace(allowed=True)
+
+        def check_message_rate(self, *, user_id: int, chat_id: int) -> SimpleNamespace:
+            del user_id, chat_id
+            return SimpleNamespace(allowed=True)
+
+        async def acquire_ai_request(self, *, user_id: int, chat_id: int) -> FakeLease:
+            del user_id, chat_id
+            events.append("acquire")
+            return lease
+
+        def check_user_ai_request(
+            self, *, user_id: int, chat_id: int
+        ) -> SimpleNamespace:
+            del user_id, chat_id
+            return SimpleNamespace(allowed=True)
+
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(router, "abuse_limiter", FakeLimiter())
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"id": 56, "status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"id": 56, "status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_memory_profile)
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(
+        router,
+        "get_user_by_telegram_id",
+        lambda telegram_id: {"id": 777, "username": "ada"},
+    )
+    monkeypatch.setattr(
+        router,
+        "get_memory_context",
+        lambda **kwargs: SimpleNamespace(
+            compacted_user_memory=None,
+            recent_conversation_messages=[],
+        ),
+    )
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        events.append("answer")
+        return "done"
+
+    async def compact_turn(**kwargs: object) -> None:
+        del kwargs
+        assert lease.released is True
+        events.append("compact")
+
+    monkeypatch.setattr(engine, "answer", answer)
+    monkeypatch.setattr(router, "store_successful_turn", lambda **kwargs: True)
+    monkeypatch.setattr(router, "_compact_successful_turn", compact_turn)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == ["done"]
+    assert events == ["acquire", "answer", "release", "compact"]
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,11 @@ from .bot_profile import BotProfile
 from .commands.auth_guard import require_login
 from .config import get_settings
 from .database import get_user_by_telegram_id
-from .memory_store import add_successful_turn, get_memory_context
+from .memory_store import (
+    compact_memory_if_needed,
+    get_memory_context,
+    store_successful_turn,
+)
 from .message_store import (
     mark_answered,
     mark_failed,
@@ -137,6 +141,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     finished_status = "failed"
+    memory_compaction_job: tuple[int, str, str, BotProfile] | None = None
 
     try:
         if current_status in {"persisted", "received", "failed"}:
@@ -173,7 +178,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(answer)
         mark_answered(update.update_id)
         if internal_user and memory_is_enabled:
-            await _remember_successful_turn(
+            stored = _store_successful_turn(
                 internal_user_id=int(internal_user["id"]),
                 bot_profile_id=active_profile.bot_profile_id,
                 user_message=message,
@@ -182,8 +187,14 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 telegram_message_id=getattr(update.message, "message_id", None),
                 inbound_message_id=claimed.get("id") if claimed else None,
                 request_id=processing_request.request_id,
-                profile=active_profile,
             )
+            if stored:
+                memory_compaction_job = (
+                    int(internal_user["id"]),
+                    active_profile.bot_profile_id,
+                    processing_request.request_id,
+                    active_profile,
+                )
         finished_status = "answered"
     except Exception as exc:
         mark_failed(update.update_id, type(exc).__name__)
@@ -198,6 +209,13 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             request_id=active_request.request_id,
             status=finished_status,
         )
+    if memory_compaction_job is not None:
+        await _compact_successful_turn(
+            internal_user_id=memory_compaction_job[0],
+            bot_profile_id=memory_compaction_job[1],
+            request_id=memory_compaction_job[2],
+            profile=memory_compaction_job[3],
+        )
 
 
 def _memory_enabled(profile: BotProfile) -> bool:
@@ -206,7 +224,7 @@ def _memory_enabled(profile: BotProfile) -> bool:
     return get_settings().memory_enabled
 
 
-async def _remember_successful_turn(
+def _store_successful_turn(
     *,
     internal_user_id: int,
     bot_profile_id: str,
@@ -215,6 +233,34 @@ async def _remember_successful_turn(
     telegram_chat_id: int | None,
     telegram_message_id: int | None,
     inbound_message_id: int | None,
+    request_id: str,
+) -> bool:
+    try:
+        return store_successful_turn(
+            user_id=internal_user_id,
+            bot_profile_id=bot_profile_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            telegram_chat_id=telegram_chat_id,
+            telegram_message_id=telegram_message_id,
+            inbound_message_id=inbound_message_id,
+            request_id=request_id,
+        )
+    except Exception:
+        # The user already received the answer. Memory must not turn that into
+        # a failed inbound message or leak raw content into logs.
+        logger.exception(
+            "memory_store_after_answer_failed request_id=%s user_id=%s",
+            request_id,
+            internal_user_id,
+        )
+        return False
+
+
+async def _compact_successful_turn(
+    *,
+    internal_user_id: int,
+    bot_profile_id: str,
     request_id: str,
     profile: BotProfile,
 ) -> None:
@@ -232,22 +278,14 @@ async def _remember_successful_turn(
         )
 
     try:
-        await add_successful_turn(
+        await compact_memory_if_needed(
             user_id=internal_user_id,
             bot_profile_id=bot_profile_id,
-            user_message=user_message,
-            assistant_message=assistant_message,
-            telegram_chat_id=telegram_chat_id,
-            telegram_message_id=telegram_message_id,
-            inbound_message_id=inbound_message_id,
-            request_id=request_id,
             summarizer=summarize,
         )
     except Exception:
-        # The user already received the answer. Memory must not turn that into
-        # a failed inbound message or leak raw content into logs.
         logger.exception(
-            "memory_store_after_answer_failed request_id=%s user_id=%s",
+            "memory_compaction_after_answer_failed request_id=%s user_id=%s",
             request_id,
             internal_user_id,
         )
