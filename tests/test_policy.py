@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from telegram.error import TelegramError
 
 from forge_bot.commands import auth_guard
 from forge_bot.commands.policy import (
@@ -15,10 +16,11 @@ from forge_bot.commands.policy import (
 
 
 class FakeMessage:
-    def __init__(self) -> None:
+    def __init__(self, *, edit_reply_markup_error: Exception | None = None) -> None:
         self.replies: list[str] = []
         self.reply_calls: list[dict[str, object | None]] = []
         self.edited_reply_markups: list[object | None] = []
+        self.edit_reply_markup_error = edit_reply_markup_error
 
     async def reply_text(self, text: str, reply_markup: object | None = None) -> None:
         self.replies.append(text)
@@ -26,6 +28,8 @@ class FakeMessage:
 
     async def edit_reply_markup(self, reply_markup: object | None = None) -> None:
         self.edited_reply_markups.append(reply_markup)
+        if self.edit_reply_markup_error is not None:
+            raise self.edit_reply_markup_error
 
 
 class FakeCallbackQuery:
@@ -49,12 +53,14 @@ def make_update(telegram_id: int = 123) -> SimpleNamespace:
 def make_callback_update(
     data: str,
     telegram_id: int = 123,
+    *,
+    message: FakeMessage | None = None,
 ) -> SimpleNamespace:
-    message = FakeMessage()
+    callback_message = message or FakeMessage()
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=telegram_id),
         message=None,
-        callback_query=FakeCallbackQuery(message, data),
+        callback_query=FakeCallbackQuery(callback_message, data),
     )
 
 
@@ -276,6 +282,83 @@ async def test_accept_policy_callback_handles_database_failure(
     assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         "Policy acceptance is temporarily unavailable. Please try again in a moment."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_accept_policy_callback_persists_when_keyboard_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = make_callback_update(
+        POLICY_ACCEPT_CALLBACK,
+        telegram_id=456,
+        message=FakeMessage(edit_reply_markup_error=TelegramError("stale callback")),
+    )
+    calls: list[int] = []
+    logged: list[str] = []
+
+    monkeypatch.setattr("forge_bot.commands.policy.verify_user", lambda user_id: True)
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.has_current_policy_acceptance",
+        lambda user_id: False,
+    )
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.accept_current_policy",
+        lambda user_id: calls.append(user_id) or True,
+    )
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.logger.warning",
+        lambda message, exc_info: logged.append(message),
+    )
+
+    await accept_policy_callback(update, SimpleNamespace())
+
+    assert update.callback_query.answers == 1
+    assert calls == [456]
+    assert update.callback_query.message.edited_reply_markups == [None]
+    assert logged == ["policy_action_keyboard_cleanup_failed"]
+    assert update.callback_query.message.replies == [
+        "Policy accepted.\n\nNext step: You can now send me a message"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_decline_policy_callback_persists_when_keyboard_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = make_callback_update(
+        POLICY_DECLINE_CALLBACK,
+        message=FakeMessage(edit_reply_markup_error=TelegramError("message changed")),
+    )
+    calls: list[int] = []
+    logged: list[str] = []
+
+    monkeypatch.setattr("forge_bot.commands.policy.verify_user", lambda user_id: True)
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.decline_current_policy",
+        lambda user_id: calls.append(user_id) or True,
+    )
+    monkeypatch.setattr(
+        "forge_bot.commands.policy.logger.warning",
+        lambda message, exc_info: logged.append(message),
+    )
+
+    await decline_policy_callback(update, SimpleNamespace())
+
+    assert update.callback_query.answers == 1
+    assert calls == [123]
+    assert update.callback_query.message.edited_reply_markups == [None]
+    assert logged == ["policy_action_keyboard_cleanup_failed"]
+    assert update.callback_query.message.replies == [
+        (
+            "Policy declined.\n\n"
+            "What happens next: Protected chat messages will stay unavailable "
+            "until you accept the policy\n\n"
+            "Available actions:\n"
+            "/policy\n"
+            "/accept_policy\n"
+            "/privacy"
+        )
     ]
 
 

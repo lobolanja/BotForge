@@ -1,6 +1,8 @@
+import logging
 from typing import Literal, cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram.error import TelegramError
 from telegram.ext import ContextTypes
 
 from forge_bot.config import get_settings
@@ -12,6 +14,8 @@ from forge_bot.database import (
     verify_user,
 )
 from forge_bot.messages import build_message
+
+logger = logging.getLogger(__name__)
 
 IDENTITY_UNAVAILABLE_MESSAGE = (
     "Identity checks are temporarily unavailable. Please try again in a moment."
@@ -155,8 +159,8 @@ async def accept_policy_callback(
         return
 
     message = cast(Message, query.message)
-    await _clear_policy_action_keyboard(message)
     status = accept_current_policy_for_user(update.effective_user.id)
+    await _clear_policy_action_keyboard(message)
     await message.reply_text(_accept_policy_message(status))
 
 
@@ -175,8 +179,8 @@ async def decline_policy_callback(
         return
 
     message = cast(Message, query.message)
-    await _clear_policy_action_keyboard(message)
     status = decline_current_policy_for_user(update.effective_user.id)
+    await _clear_policy_action_keyboard(message)
     await message.reply_text(_decline_policy_message(status))
 
 
@@ -233,4 +237,7 @@ def _decline_policy_message(status: PolicyActionStatus) -> str:
 
 async def _clear_policy_action_keyboard(message: Message) -> None:
     """Remove stale inline actions after a policy button is used."""
-    await message.edit_reply_markup(reply_markup=None)
+    try:
+        await message.edit_reply_markup(reply_markup=None)
+    except TelegramError:
+        logger.warning("policy_action_keyboard_cleanup_failed", exc_info=True)
