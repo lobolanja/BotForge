@@ -655,16 +655,10 @@ def clear_user_memory(user_id: int) -> MemoryClearResult:
 
     try:
         with conn.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM conversation_messages WHERE user_id = %s",
-                (user_id,),
+            conversation_memory, compacted_memory = _clear_user_memory_records(
+                cursor,
+                user_id=user_id,
             )
-            conversation_memory = int(cursor.rowcount or 0)
-            cursor.execute(
-                "DELETE FROM user_memory_summaries WHERE user_id = %s",
-                (user_id,),
-            )
-            compacted_memory = int(cursor.rowcount or 0)
             conn.commit()
     except psycopg.Error:
         conn.rollback()
@@ -691,10 +685,46 @@ def clear_user_memory(user_id: int) -> MemoryClearResult:
 
 def clear_memory_for_telegram_user(telegram_id: int) -> MemoryClearResult | None:
     """Clear personalization memory for a linked Telegram user."""
-    user = get_user_by_telegram_id(telegram_id)
-    if not user:
-        return None
-    return clear_user_memory(int(user["id"]))
+    conn = conect_db()
+    if not conn:
+        return MemoryClearResult()
+
+    try:
+        with conn.cursor() as cursor:
+            user = _fetch_active_user_for_update(cursor, telegram_id)
+            if not user:
+                conn.rollback()
+                return None
+            conversation_memory, compacted_memory = _clear_user_memory_records(
+                cursor,
+                user_id=int(user["id"]),
+            )
+            _anonymize_answered_inbound_messages(cursor, telegram_id)
+            conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception(
+            "clear_memory_for_telegram_user_failed telegram_id=%s",
+            telegram_id,
+        )
+        return MemoryClearResult()
+    finally:
+        conn.close()
+
+    try:
+        from .memory_store import clear_cached_user_memory
+
+        clear_cached_user_memory(user_id=int(user["id"]))
+    except Exception:
+        logger.exception(
+            "clear_memory_for_telegram_user_cache_invalidation_failed telegram_id=%s",
+            telegram_id,
+        )
+
+    return MemoryClearResult(
+        conversation_memory=conversation_memory,
+        compacted_memory=compacted_memory,
+    )
 
 
 def request_user_deletion(telegram_id: int) -> UserDeletionResult:
@@ -859,6 +889,37 @@ def _fetch_active_user_for_update(
     )
     user: dict[str, Any] | None = cursor.fetchone()
     return user
+
+
+def _clear_user_memory_records(cursor: Any, *, user_id: int) -> tuple[int, int]:
+    cursor.execute(
+        "DELETE FROM conversation_messages WHERE user_id = %s",
+        (user_id,),
+    )
+    conversation_memory = int(cursor.rowcount or 0)
+    cursor.execute(
+        "DELETE FROM user_memory_summaries WHERE user_id = %s",
+        (user_id,),
+    )
+    compacted_memory = int(cursor.rowcount or 0)
+    return conversation_memory, compacted_memory
+
+
+def _anonymize_answered_inbound_messages(cursor: Any, telegram_id: int) -> int:
+    """Remove answered text content so memory cannot bootstrap after clearing."""
+    cursor.execute(
+        """
+        UPDATE inbound_messages
+        SET text = NULL,
+            raw_update = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_user_id = %s
+          AND status = 'answered'
+          AND message_type = 'text'
+        """,
+        (telegram_id,),
+    )
+    return int(cursor.rowcount or 0)
 
 
 def _anonymize_inbound_messages(cursor: Any, telegram_id: int) -> int:
