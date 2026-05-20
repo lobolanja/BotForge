@@ -155,6 +155,7 @@ async def accept_policy_callback(
         return
 
     message = cast(Message, query.message)
+    await _clear_policy_action_keyboard(message)
     status = accept_current_policy_for_user(update.effective_user.id)
     await message.reply_text(_accept_policy_message(status))
 
@@ -174,6 +175,7 @@ async def decline_policy_callback(
         return
 
     message = cast(Message, query.message)
+    await _clear_policy_action_keyboard(message)
     status = decline_current_policy_for_user(update.effective_user.id)
     await message.reply_text(_decline_policy_message(status))
 
@@ -227,3 +229,8 @@ def _decline_policy_message(status: PolicyActionStatus) -> str:
         "database_unavailable": DECLINE_UNAVAILABLE_MESSAGE,
     }
     return messages.get(status, IDENTITY_UNAVAILABLE_MESSAGE)
+
+
+async def _clear_policy_action_keyboard(message: Message) -> None:
+    """Remove stale inline actions after a policy button is used."""
+    await message.edit_reply_markup(reply_markup=None)

@@ -18,10 +18,14 @@ class FakeMessage:
     def __init__(self) -> None:
         self.replies: list[str] = []
         self.reply_calls: list[dict[str, object | None]] = []
+        self.edited_reply_markups: list[object | None] = []
 
     async def reply_text(self, text: str, reply_markup: object | None = None) -> None:
         self.replies.append(text)
         self.reply_calls.append({"text": text, "reply_markup": reply_markup})
+
+    async def edit_reply_markup(self, reply_markup: object | None = None) -> None:
+        self.edited_reply_markups.append(reply_markup)
 
 
 class FakeCallbackQuery:
@@ -183,6 +187,7 @@ async def test_accept_policy_callback_stores_acceptance(
 
     assert update.callback_query.answers == 1
     assert calls == [456]
+    assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         "Policy accepted.\n\nNext step: You can now send me a message"
     ]
@@ -203,6 +208,7 @@ async def test_decline_policy_callback_replies_and_answers(
     await decline_policy_callback(update, SimpleNamespace())
 
     assert update.callback_query.answers == 1
+    assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         (
             "Policy declined.\n\n"
@@ -231,6 +237,7 @@ async def test_accept_policy_callback_reports_already_accepted(
     await accept_policy_callback(update, SimpleNamespace())
 
     assert update.callback_query.answers == 1
+    assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         "You already accepted the current policy."
     ]
@@ -247,6 +254,7 @@ async def test_accept_policy_callback_reports_unlinked_user(
     await accept_policy_callback(update, SimpleNamespace())
 
     assert update.callback_query.answers == 1
+    assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         "I could not accept the policy because your identity is not linked.\n\n"
         "Available actions:\n"
@@ -265,6 +273,7 @@ async def test_accept_policy_callback_handles_database_failure(
     await accept_policy_callback(update, SimpleNamespace())
 
     assert update.callback_query.answers == 1
+    assert update.callback_query.message.edited_reply_markups == [None]
     assert update.callback_query.message.replies == [
         "Policy acceptance is temporarily unavailable. Please try again in a moment."
     ]
