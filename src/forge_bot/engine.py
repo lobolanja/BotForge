@@ -262,6 +262,34 @@ async def summarize_memory(
             queue_wait_seconds=0.0,
         )
         content = await provider.chat(model=profile.llm_model, messages=messages)
+    except AI_TIMEOUT_ERRORS:
+        provider_name = _provider_name(provider)
+        logger.warning(
+            "memory_compaction_timeout request_id=%s provider=%s model=%s "
+            "timeout_seconds=%s source_messages=%s",
+            request_id_text,
+            provider_name,
+            _logged_model(profile.llm_model, provider_name),
+            get_settings().ai_timeout_seconds,
+            len(source_messages),
+        )
+        fallback_summary = await _answer_with_fallback(
+            messages=messages,
+            model=profile.llm_model,
+            max_chars=max_chars,
+            message_chars=sum(len(message["content"]) for message in source_messages),
+            request_id=request_id_text,
+            reason="memory_compaction_timeout",
+            timeout_fallback=None,
+        )
+        if fallback_summary is None:
+            logger.error(
+                "memory_compaction_failed request_id=%s provider=%s source_messages=%s",
+                request_id_text,
+                provider_name,
+                len(source_messages),
+            )
+        return fallback_summary
     except Exception:
         provider_name = _provider_name(provider)
         logger.warning(
@@ -279,6 +307,7 @@ async def summarize_memory(
             message_chars=sum(len(message["content"]) for message in source_messages),
             request_id=request_id_text,
             reason="memory_compaction_primary_error",
+            timeout_fallback=None,
         )
         if fallback_summary is None:
             logger.error(
@@ -431,6 +460,7 @@ async def _answer_with_fallback(
     message_chars: int,
     request_id: str,
     reason: str,
+    timeout_fallback: str | None = AI_TIMEOUT_FALLBACK,
 ) -> str | None:
     fallback_provider_name = _fallback_provider_name()
     if not fallback_provider_name:
@@ -463,7 +493,7 @@ async def _answer_with_fallback(
             get_settings().ai_timeout_seconds,
             message_chars,
         )
-        return AI_TIMEOUT_FALLBACK
+        return timeout_fallback
     except Exception:
         logger.exception(
             "llm_chat_failed request_id=%s provider=%s model=%s "

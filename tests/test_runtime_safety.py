@@ -285,6 +285,67 @@ async def test_memory_summary_uses_compaction_prompt(
 
 
 @pytest.mark.asyncio
+async def test_memory_summary_timeout_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimeoutProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model, messages
+            raise asyncio.TimeoutError
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "_build_provider", lambda name: TimeoutProvider())
+
+    result = await engine.summarize_memory(
+        profile=fake_profile(),
+        existing_summary="Likes quick dinners.",
+        source_messages=[{"role": "user", "content": "I am vegetarian."}],
+        max_chars=2000,
+        request_id="req-1",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_memory_summary_fallback_timeout_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model, messages
+            raise RuntimeError("ollama is down")
+
+    class TimeoutProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model, messages
+            raise asyncio.TimeoutError
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "_build_provider",
+        lambda name: TimeoutProvider() if name == "nvidia" else FailingProvider(),
+    )
+
+    result = await engine.summarize_memory(
+        profile=fake_profile(),
+        existing_summary="Likes quick dinners.",
+        source_messages=[{"role": "user", "content": "I am vegetarian."}],
+        max_chars=2000,
+        request_id="req-1",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_missing_nvidia_api_key_fails_only_when_fallback_is_needed(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
