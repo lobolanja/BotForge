@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -189,3 +190,78 @@ async def test_successful_turn_compacts_first_five_unsummarized_messages(
     assert cached.compacted_user_memory == "Updated compact memory"
     assert cached.recent_messages[0].summarized_at is not None
     assert cached.recent_messages[5].summarized_at is None
+
+
+@pytest.mark.asyncio
+async def test_compaction_is_serialized_per_user_and_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ConversationMemoryStore()
+    cached = _CachedMemory(
+        compacted_user_memory=None,
+        recent_messages=[message(1), message(2, "assistant")],
+    )
+    summarizer_calls: list[list[dict[str, str]]] = []
+    first_started = asyncio.Event()
+    allow_first_to_finish = asyncio.Event()
+
+    monkeypatch.setattr(
+        "forge_bot.memory_store.get_settings",
+        lambda: SimpleNamespace(
+            memory_recent_messages=10,
+            memory_compaction_trigger_messages=2,
+            memory_compaction_source_messages=2,
+            memory_max_message_chars=4000,
+            memory_compacted_max_chars=2000,
+        ),
+    )
+    monkeypatch.setattr(
+        store,
+        "_get_or_load",
+        lambda user_id, bot_profile_id: cached,
+    )
+    monkeypatch.setattr(
+        store,
+        "_save_summary_and_mark_sources",
+        lambda **kwargs: True,
+    )
+
+    async def summarize(
+        existing_summary: str | None,
+        source_messages: list[dict[str, str]],
+        max_chars: int,
+    ) -> str:
+        del existing_summary, max_chars
+        summarizer_calls.append(source_messages)
+        first_started.set()
+        await allow_first_to_finish.wait()
+        return "Compacted once"
+
+    first_task = asyncio.create_task(
+        store.compact_memory_if_needed(
+            user_id=7,
+            bot_profile_id="default_dev",
+            summarizer=summarize,
+        )
+    )
+    await first_started.wait()
+
+    second_task = asyncio.create_task(
+        store.compact_memory_if_needed(
+            user_id=7,
+            bot_profile_id="default_dev",
+            summarizer=summarize,
+        )
+    )
+
+    allow_first_to_finish.set()
+    await asyncio.gather(first_task, second_task)
+
+    assert summarizer_calls == [
+        [
+            {"role": "user", "content": "user 1"},
+            {"role": "assistant", "content": "assistant 2"},
+        ]
+    ]
+    assert cached.compacted_user_memory == "Compacted once"
+    assert all(item.summarized_at is not None for item in cached.recent_messages)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ class ConversationMemoryStore:
 
     def __init__(self) -> None:
         self._cache: dict[tuple[int, str], _CachedMemory] = {}
+        self._compaction_locks: dict[tuple[int, str], asyncio.Lock] = {}
         self._lock = RLock()
 
     def get_context(
@@ -147,13 +149,18 @@ class ConversationMemoryStore:
         bot_profile_id: str,
         summarizer: MemorySummarizer,
     ) -> None:
-        cached = self._get_or_load(user_id=user_id, bot_profile_id=bot_profile_id)
-        await self._compact_if_needed(
+        compaction_lock = self._get_compaction_lock(
             user_id=user_id,
             bot_profile_id=bot_profile_id,
-            cached=cached,
-            summarizer=summarizer,
         )
+        async with compaction_lock:
+            cached = self._get_or_load(user_id=user_id, bot_profile_id=bot_profile_id)
+            await self._compact_if_needed(
+                user_id=user_id,
+                bot_profile_id=bot_profile_id,
+                cached=cached,
+                summarizer=summarizer,
+            )
 
     def clear_cached_user(
         self,
@@ -168,6 +175,17 @@ class ConversationMemoryStore:
                     del self._cache[key]
                 return
             self._cache.pop((user_id, bot_profile_id), None)
+
+    def _get_compaction_lock(
+        self, *, user_id: int, bot_profile_id: str
+    ) -> asyncio.Lock:
+        key = (user_id, bot_profile_id)
+        with self._lock:
+            lock = self._compaction_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._compaction_locks[key] = lock
+            return lock
 
     async def _compact_if_needed(
         self,
