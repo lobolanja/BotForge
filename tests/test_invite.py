@@ -6,9 +6,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from helpers import make_settings
 
 from forge_bot.commands.invite import invite
 from forge_bot.database import InviteToken
+from forge_bot.rate_limits import ADMIN_INVITE_RATE_LIMIT_MESSAGE, AbuseLimiter
 
 
 class FakeMessage:
@@ -22,6 +24,7 @@ class FakeMessage:
 def create_update(user_id: int) -> Any:
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=789),
         message=FakeMessage(),
     )
 
@@ -46,6 +49,14 @@ def admin_patches():
         ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "forge_bot.commands.rate_limit_guard.abuse_limiter",
+        AbuseLimiter(make_settings),
+    )
 
 
 @pytest.fixture
@@ -74,7 +85,7 @@ async def test_invite_no_arguments(admin_patches) -> None:
 async def test_invite_missing_email(admin_patches) -> None:
     update = create_update(user_id=123)
     await invite(update, create_context(args=["user"]))
-    assert "Missing email" in update.message.replies[0]
+    assert "email address is missing" in update.message.replies[0]
     assert "/invite <role> <email>" in update.message.replies[0]
 
 
@@ -82,7 +93,7 @@ async def test_invite_missing_email(admin_patches) -> None:
 async def test_invite_too_many_arguments(admin_patches) -> None:
     update = create_update(user_id=123)
     await invite(update, create_context(args=["user", "person@example.com", "extra"]))
-    assert "Too many arguments" in update.message.replies[0]
+    assert "too many arguments" in update.message.replies[0].lower()
 
 
 @pytest.mark.asyncio
@@ -98,7 +109,7 @@ async def test_invite_professional_role_rejected(admin_patches) -> None:
 async def test_invite_invalid_role_rejected(admin_patches) -> None:
     update = create_update(user_id=123)
     await invite(update, create_context(args=["invalid_role", "person@example.com"]))
-    assert "Invalid role" in update.message.replies[0]
+    assert "supported role" in update.message.replies[0]
     assert "invalid_role" in update.message.replies[0]
 
 
@@ -106,7 +117,7 @@ async def test_invite_invalid_role_rejected(admin_patches) -> None:
 async def test_invite_invalid_email_rejected(admin_patches) -> None:
     update = create_update(user_id=123)
     await invite(update, create_context(args=["user", "not-an-email"]))
-    assert "Invalid email" in update.message.replies[0]
+    assert "email address is invalid" in update.message.replies[0]
 
 
 @pytest.mark.asyncio
@@ -148,8 +159,8 @@ async def test_invite_no_admin_user_info(admin_patches) -> None:
     update = create_update(user_id=123)
     with patch("forge_bot.commands.invite.get_user_by_telegram_id", return_value=None):
         await invite(update, create_context(args=["user", "person@example.com"]))
-    assert "Error" in update.message.replies[0]
-    assert "admin information" in update.message.replies[0]
+    assert "temporarily unavailable" in update.message.replies[0]
+    assert "admin details" in update.message.replies[0].lower()
 
 
 @pytest.mark.asyncio
@@ -162,8 +173,8 @@ async def test_invite_no_bot_username(admin_patches) -> None:
             update,
             create_context(args=["user", "person@example.com"], bot_username=None),
         )
-    assert "Error" in update.message.replies[0]
-    assert "username" in update.message.replies[0].lower()
+    assert "temporarily unavailable" in update.message.replies[0]
+    assert "administrator" in update.message.replies[0].lower()
 
 
 @pytest.mark.asyncio
@@ -176,8 +187,24 @@ async def test_invite_token_creation_failure(admin_patches) -> None:
         patch("forge_bot.commands.invite.create_invite_token", return_value=None),
     ):
         await invite(update, create_context(args=["user", "person@example.com"]))
-    assert "Error" in update.message.replies[0]
-    assert "could not generate" in update.message.replies[0].lower()
+    assert "temporarily unavailable" in update.message.replies[0]
+    assert "invite creation" in update.message.replies[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_invite_rate_limited_for_admins(admin_patches, monkeypatch) -> None:
+    update = create_update(user_id=123)
+    limiter = AbuseLimiter(lambda: make_settings(admin_invites_per_hour=1))
+    assert limiter.check_admin_invite(user_id=123, chat_id=789).allowed
+    monkeypatch.setattr("forge_bot.commands.rate_limit_guard.abuse_limiter", limiter)
+
+    with patch(
+        "forge_bot.commands.invite.get_user_by_telegram_id",
+        return_value={"id": 1},
+    ):
+        await invite(update, create_context(args=["user", "person@example.com"]))
+
+    assert update.message.replies == [ADMIN_INVITE_RATE_LIMIT_MESSAGE]
 
 
 @pytest.mark.asyncio

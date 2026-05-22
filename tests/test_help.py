@@ -30,7 +30,10 @@ async def test_help_hides_admin_invite_for_non_admin(
 
     await help_command(update, SimpleNamespace())
 
-    assert "/status - Verifica tu identidad vinculada" in update.message.replies[0]
+    assert "/status - Check your linked identity." in update.message.replies[0]
+    assert "/privacy - Review stored data and controls." in update.message.replies[0]
+    assert "/memory_clear - Clear personalization memory." in update.message.replies[0]
+    assert "/delete_my_data - Start data deletion." in update.message.replies[0]
     assert "/invite" not in update.message.replies[0]
 
 

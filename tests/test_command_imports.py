@@ -7,6 +7,7 @@ def test_command_modules_import() -> None:
     from forge_bot.commands.help import help_command
     from forge_bot.commands.ping import ping
     from forge_bot.commands.policy import accept_policy, decline_policy, policy
+    from forge_bot.commands.privacy import delete_my_data, memory_clear, privacy
     from forge_bot.commands.time import time
     from forge_bot.commands.translate import translate
     from forge_bot.commands.unknown import unknown_command
@@ -18,6 +19,9 @@ def test_command_modules_import() -> None:
     assert callable(campaign_invite)
     assert callable(ping)
     assert callable(policy)
+    assert callable(privacy)
+    assert callable(memory_clear)
+    assert callable(delete_my_data)
     assert callable(status)
     assert callable(time)
     assert callable(translate)

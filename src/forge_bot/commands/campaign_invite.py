@@ -11,8 +11,13 @@ from forge_bot.database import (
     create_campaign_invite_token,
     get_user_by_telegram_id,
 )
+from forge_bot.messages import build_message, usage_message, validation_message
 
 from .auth_guard import admin_required
+from .rate_limit_guard import reply_if_admin_invite_limited
+
+CAMPAIGN_INVITE_USAGE = "/campaign_invite <role> <expires_at> <max_uses>"
+CAMPAIGN_INVITE_EXAMPLE = "/campaign_invite user 2026-06-30 100"
 
 
 def parse_campaign_expiration(value: str) -> datetime | None:
@@ -31,60 +36,90 @@ async def campaign_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     args = context.args or []
-    usage = (
-        "Usage: /campaign_invite <role> <expires_at> <max_uses>\n\n"
-        "Example: /campaign_invite user 2026-06-30 100"
+    usage = usage_message(
+        CAMPAIGN_INVITE_USAGE,
+        example=CAMPAIGN_INVITE_EXAMPLE,
     )
     if len(args) == 0:
         await update.message.reply_text(usage)
         return
 
     if len(args) < 3:
-        await update.message.reply_text(f"Error: Missing arguments.\n\n{usage}")
+        await update.message.reply_text(
+            validation_message(
+                "one or more arguments are missing",
+                command=CAMPAIGN_INVITE_USAGE,
+                example=CAMPAIGN_INVITE_EXAMPLE,
+            )
+        )
         return
 
     if len(args) > 3:
         await update.message.reply_text(
-            "Error: Too many arguments.\n\n"
-            "Usage: /campaign_invite <role> <expires_at> <max_uses>"
+            validation_message(
+                "too many arguments were provided",
+                command=CAMPAIGN_INVITE_USAGE,
+                example=CAMPAIGN_INVITE_EXAMPLE,
+            )
         )
         return
 
     requested_role = args[0].lower()
     if requested_role in RESERVED_INVITE_ROLES:
-        await update.message.reply_text("The 'professional' role is not available yet.")
+        await update.message.reply_text(
+            "I could not create the campaign invite because the 'professional' role "
+            "is not available yet."
+        )
         return
 
     if requested_role not in VALID_INVITE_ROLES:
         roles_list = ", ".join(sorted(VALID_INVITE_ROLES))
         await update.message.reply_text(
-            f"Invalid role '{requested_role}'.\n\nAvailable roles: {roles_list}."
+            f"I could not create the campaign invite because '{requested_role}' is "
+            f"not a supported role.\n\nAvailable roles: {roles_list}.\n\n"
+            f"{usage_message(CAMPAIGN_INVITE_USAGE, example=CAMPAIGN_INVITE_EXAMPLE)}"
         )
         return
 
     expires_at = parse_campaign_expiration(args[1])
     if expires_at is None:
         await update.message.reply_text(
-            "Invalid expiration date. Use YYYY-MM-DD, for example 2026-06-30."
+            validation_message(
+                "the expiration date is invalid",
+                command=CAMPAIGN_INVITE_USAGE,
+                example=CAMPAIGN_INVITE_EXAMPLE,
+            )
         )
         return
 
     try:
         max_uses = int(args[2])
     except ValueError:
-        await update.message.reply_text("Invalid max uses. Use a positive integer.")
+        await update.message.reply_text(
+            validation_message(
+                "max uses must be a positive integer",
+                command=CAMPAIGN_INVITE_USAGE,
+                example=CAMPAIGN_INVITE_EXAMPLE,
+            )
+        )
         return
 
     admin_user = get_user_by_telegram_id(update.effective_user.id)
     if not admin_user:
-        await update.message.reply_text("Error: Could not retrieve admin information.")
+        await update.message.reply_text(
+            "Admin details are temporarily unavailable. Please try again in a moment."
+        )
         return
 
     bot_username = context.bot.username
     if not bot_username:
         await update.message.reply_text(
-            "Error: Bot username not configured. Please contact the administrator."
+            "Campaign invite creation is temporarily unavailable. Please contact "
+            "the administrator."
         )
+        return
+
+    if await reply_if_admin_invite_limited(update):
         return
 
     try:
@@ -96,23 +131,29 @@ async def campaign_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             bot_username=bot_username,
         )
     except ValueError as error:
-        await update.message.reply_text(str(error))
+        await update.message.reply_text(
+            f"I could not create the campaign invite because "
+            f"{str(error).rstrip('.')}.\n\n"
+            f"{usage_message(CAMPAIGN_INVITE_USAGE, example=CAMPAIGN_INVITE_EXAMPLE)}"
+        )
         return
 
     if not token_result:
         await update.message.reply_text(
-            "Error: Could not generate campaign invite token. Please try again later."
+            "Campaign invite creation is temporarily unavailable. Please try again "
+            "in a moment."
         )
         return
 
     expires_at_str = token_result.expires_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-    response = (
-        "Campaign invite link created!\n\n"
-        "Invite link:\n"
-        f"{token_result.invite_link}\n\n"
-        f"Role: {requested_role}\n"
-        f"Expires: {expires_at_str}\n"
-        f"Max uses: {max_uses}"
+    response = build_message(
+        "Campaign invite link created.",
+        details=(
+            ("Role", requested_role),
+            ("Expires", expires_at_str),
+            ("Max uses", str(max_uses)),
+        ),
+        link=token_result.invite_link,
     )
 
     await update.message.reply_text(response)

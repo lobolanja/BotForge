@@ -22,6 +22,8 @@ The beta roadmap is tracked in GitHub issues:
 - [Recommended task order](tasks/README.md)
 - [Product vision and user stories](tasks/product-vision-user-stories.md)
 - [Customer journeys](tasks/customer-journeys.md)
+- [Beta release checklist](docs/beta-release-checklist.md)
+- [Privacy and retention inventory](docs/privacy-and-retention.md)
 
 ## Runtime Architecture
 
@@ -64,6 +66,8 @@ development defaults:
 ```env
 TELEGRAM_TOKEN=<telegram_bot_token>
 
+BOTFORGE_ENV=development
+
 DB_HOST=postgres
 DB_USER=botforge
 DB_PASSWORD=botforge_dev_password
@@ -71,7 +75,14 @@ DB_NAME=botforge
 DB_PORT=5432
 
 OLLAMA_HOST=http://ollama:11434
-OLLAMA_MODEL=gemma2:2b
+OLLAMA_MODEL=gemma3:4b
+
+LLM_PRIMARY_PROVIDER=ollama
+LLM_FALLBACK_PROVIDER=nvidia
+LLM_FALLBACK_QUEUE_WAIT_SECONDS=100
+NVIDIA_API_KEY=
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
@@ -81,14 +92,26 @@ Notes:
 
 - Replace `<telegram_bot_token>` with your real token from BotFather and remove
   the angle brackets.
+- Keep `BOTFORGE_ENV=development` for local work. Set `BOTFORGE_ENV=production`
+  for beta or production deployments; startup fails if the Telegram token is
+  still the placeholder or `DB_PASSWORD` is still `botforge_dev_password`.
 - The database credentials above are development defaults. Change them before
   using this stack outside your local machine.
 - `DB_HOST` must be `postgres` when running inside Docker Compose.
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
 - `OLLAMA_MODEL` is used by the `ollama-pull` container. Keep it aligned with
-  the active profile's `llm_model`. The default is `gemma2:2b`, the small
-  Gemma 2 model. If these values drift, Compose can pull one model while the
-  bot tries to use another at runtime.
+  the active profile's `llm_model`. The default is `gemma3:4b`, a balanced
+  Gemma model for local development on machines with limited RAM. If these
+  values drift, Compose can pull one model while the bot tries to use another
+  at runtime.
+- `LLM_PRIMARY_PROVIDER=ollama` keeps local inference as the first choice.
+  `LLM_FALLBACK_PROVIDER=nvidia` enables fallback through NVIDIA NIM when
+  Ollama errors or when the lifecycle queue wait exceeds
+  `LLM_FALLBACK_QUEUE_WAIT_SECONDS`.
+- `NVIDIA_BASE_URL` defaults to NVIDIA's OpenAI-compatible hosted NIM endpoint,
+  `https://integrate.api.nvidia.com/v1`. Choose `NVIDIA_MODEL` from the current
+  NVIDIA API Catalog and set `NVIDIA_API_KEY` only in local or deployment
+  secrets, never in git.
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
@@ -140,8 +163,15 @@ To create a new bot profile:
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
 deterministic order: bot system prompt and rules first, optional memory, recent
-conversation messages, then the current user message. Memory inputs are wired as
-empty for now because memory implementation is outside the current scope.
+conversation messages, then the current user message.
+
+When memory is enabled globally and in the active bot profile, BotForge stores a
+bounded recent window per internal user and bot profile. The default window keeps
+the last 10 user/assistant messages. After 6 unsummarized messages are present,
+the bot asks the configured LLM to compact the oldest 5 into a durable summary
+of important dates, tastes, preferences, priorities, goals, and constraints. The
+process keeps a per-user/profile cache in memory after the first database load,
+so normal follow-up prompts do not reread the same context from PostgreSQL.
 
 ## 2. Build And Start The Stack
 
@@ -161,7 +191,7 @@ OLLAMA_MODEL=<ollama_model> docker compose up -d --build
 ```
 
 For a smaller development machine, choose a model that your hardware can run,
-for example the default `gemma2:2b` or another small model supported by Ollama.
+for example the default `gemma3:4b` or another model supported by Ollama.
 
 If you previously ran the older MariaDB-based local stack, update your `.env`
 from `.env.example` and remove old Compose containers:
@@ -179,6 +209,9 @@ Check container status:
 ```bash
 docker compose ps
 ```
+
+The `botforge`, `postgres`, and `ollama` services include Docker health checks.
+`botforge` validates configuration without printing secret values.
 
 Follow BotForge logs:
 
@@ -237,8 +270,104 @@ Later migrations add invite-token identity linking:
 - `invite_tokens.used_at`
 - `invite_tokens.used_by_user_id`
 - `invite_tokens.created_by_user_id`
+- `inbound_messages` stores supported Telegram message metadata and processing
+  state before AI work starts
 
-## 4. Create The First Invite Link
+## 4. Inbound Message Recovery
+
+BotForge uses Telegram long polling. Telegram may keep pending bot updates while
+the bot is offline, but only for up to 24 hours. BotForge cannot retrieve
+arbitrary old chat history through the normal Bot API, so messages that Telegram
+never delivers during that retention window are unrecoverable.
+
+Supported incoming non-command text and file messages are persisted in
+`inbound_messages` before AI processing starts. The table tracks the Telegram
+`update_id`, `message_id`, chat and user ids, message type, optional text, file
+metadata, retry count, and a durable status:
+
+```text
+persisted -> queued -> processing -> answered
+persisted -> ignored
+processing -> failed
+processing -> queued
+queued/processing -> expired
+```
+
+On startup, BotForge scans unfinished rows. Messages older than
+`MESSAGE_EXPIRATION_HOURS` are marked `expired`. Stale `processing` rows older
+than `MESSAGE_PROCESSING_STALE_MINUTES` are moved back to `queued` until
+`MESSAGE_MAX_RETRIES` is exceeded, then they are marked `failed`.
+
+File messages store Telegram file metadata such as `file_id`, `file_unique_id`,
+file name, MIME type, and size. If a file must be preserved long term, download
+and archive it soon after receipt; a known `file_id` can request a fresh
+Telegram download path later, subject to Telegram Bot API file limits.
+
+## 5. Abuse Prevention And Rate Limits
+
+BotForge applies conservative in-memory limits before expensive AI work starts.
+These limits are meant for beta safety and reset when the bot process restarts:
+
+```env
+MAX_MESSAGE_CHARS=4000
+USER_MESSAGES_PER_MINUTE=6
+USER_AI_REQUESTS_PER_HOUR=60
+CHAT_MESSAGES_PER_MINUTE=30
+GLOBAL_ACTIVE_AI_REQUESTS=2
+GLOBAL_AI_QUEUE_SIZE=20
+ADMIN_INVITES_PER_HOUR=50
+```
+
+When a limit is exceeded, users receive a short friendly message. The bot logs
+the limit name, user id, chat id, timestamp, and small counters only; it does
+not include raw private message text in abuse-limit logs.
+
+## 6. Conversation Memory
+
+Conversation memory is enabled with both the global setting and the active bot
+profile's `memory_enabled` flag:
+
+```env
+MEMORY_ENABLED=true
+MEMORY_RECENT_MESSAGES=10
+MEMORY_COMPACTION_TRIGGER_MESSAGES=6
+MEMORY_COMPACTION_SOURCE_MESSAGES=5
+MEMORY_MAX_MESSAGE_CHARS=4000
+MEMORY_COMPACTED_MAX_CHARS=2000
+```
+
+Memory is scoped by internal `users.id` and `bot_profile_id`, not by a shared
+Telegram chat alone. Users can remove their recent and compacted memory with
+`/memory_clear`; broader account deletion also clears memory.
+
+## 7. LLM Provider Fallback
+
+BotForge uses a small provider abstraction around model calls. The primary
+provider is Ollama by default. If Ollama is unavailable or returns an error, the
+engine tries the configured fallback provider once and sends only that single
+answer to the user.
+
+The request lifecycle also records how long a message waited before processing
+started. When that wait is greater than `LLM_FALLBACK_QUEUE_WAIT_SECONDS`
+(default: 100), BotForge selects the fallback provider immediately instead of
+starting local inference.
+
+NVIDIA NIM fallback is configured with:
+
+```env
+LLM_FALLBACK_PROVIDER=nvidia
+NVIDIA_API_KEY=<nvidia_api_key>
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
+```
+
+The NVIDIA API Catalog exposes hosted NIM language models through
+`POST /v1/chat/completions` at `https://integrate.api.nvidia.com`. Model names
+and trial terms can change, so confirm the selected model in the catalog before
+using it beyond development. BotForge logs the request id, selected provider,
+fallback reason, and duration; it does not log API keys or raw user messages.
+
+## 8. Create The First Invite Link
 
 BotForge links Telegram users to invited email identities through invite links:
 
@@ -260,9 +389,10 @@ to the user who should join the beta. When the user opens it, Telegram sends
 after the selected TTL.
 
 After invite redemption, BotForge shows the required usage policy summary.
-Users must accept the current policy with `/accept_policy` before protected
-commands or AI chat run. They can read the current notice again with `/policy`
-or decline with `/decline_policy`.
+Users can accept or decline immediately with Telegram inline buttons. The
+fallback commands `/policy`, `/accept_policy`, and `/decline_policy` remain
+available, and protected commands or AI chat stay blocked until the current
+policy is accepted.
 
 Policy acceptance is stored in `user_policy_acceptances` with the user id,
 policy version, privacy notice version, timestamp, and source. Change
@@ -280,7 +410,7 @@ docker compose run --rm --no-deps botforge python -c "from forge_bot.database im
 That prints a `tg://resolve?...` link, which opens the Telegram app directly and
 avoids the browser preview page.
 
-## 5. Admin Invite Management
+## 9. Admin Invite Management
 
 After becoming an admin, use the `/invite` command to generate invite links without direct database access:
 
@@ -297,14 +427,14 @@ After becoming an admin, use the `/invite` command to generate invite links with
 **Response:**
 
 ```text
-Invite link created!
-
-Invite link:
-https://t.me/my_bot?start=abcd1234...
+Invite link created.
 
 Role: user
 Email: person@example.com
 Expires: 2026-05-09 12:00:00 UTC
+
+Link:
+https://t.me/my_bot?start=abcd1234...
 ```
 
 **Available roles:**
@@ -333,6 +463,19 @@ Example:
 
 ```text
 /campaign_invite user 2026-06-30 100
+```
+
+Response:
+
+```text
+Campaign invite link created.
+
+Role: user
+Expires: 2026-06-30 23:59:59 UTC
+Max uses: 100
+
+Link:
+https://t.me/my_bot?start=abcd1234...
 ```
 
 The bot returns one reusable link. It can be redeemed until the end of the
@@ -371,7 +514,7 @@ Exit PostgreSQL:
 \q
 ```
 
-## 5. Telegram Smoke Test
+## 10. Telegram Smoke Test
 
 Open a private chat with the bot in Telegram:
 
@@ -385,6 +528,27 @@ hello
 Only one running BotForge container should use the same Telegram token.
 
 ## Service Operations
+
+### Production Readiness
+
+Before inviting beta users, create `.env` from `.env.example` and verify:
+
+```text
+TELEGRAM_TOKEN is the real BotFather token and is not committed
+BOTFORGE_ENV=production
+DB_PASSWORD is not botforge_dev_password
+POSTGRES_PASSWORD comes from DB_PASSWORD and is strong
+BOT_PROFILE points to the intended beta profile
+OLLAMA_MODEL matches the active profile's llm_model
+BOT_ANALYTICS_CONSENT_ENABLED and BOT_TRAINING_CONSENT_ENABLED are intentional
+postgres_data is a persistent named volume
+ollama_data is a persistent named volume
+a database backup has been created
+restore has been tested into a clean local Docker volume
+```
+
+Never commit `.env`, raw Telegram tokens, provider credentials, database dumps,
+or logs containing private user content.
 
 Start the stack:
 
@@ -452,6 +616,96 @@ docker compose down -v
 Use `docker compose down -v` carefully. It removes the PostgreSQL and Ollama volumes,
 including users and downloaded models.
 
+### Database Backup
+
+Database backups should include user records, roles, invite metadata, policy
+acceptances, inbound message state, memory tables, and any future analytics
+tables.
+They should not include `.env`, local Ollama model caches, or generated logs.
+
+Create a compressed PostgreSQL dump from the running Compose stack:
+
+```bash
+./scripts/backup_database.sh
+```
+
+By default the script writes `backups/botforge-postgres-<timestamp>.dump`.
+The `backups/` directory and `*.dump` files are ignored by git.
+
+To use a different local backup directory:
+
+```bash
+./scripts/backup_database.sh --backup-dir /var/backups/botforge
+```
+
+To target a non-default Compose project, pass `--project-name <name>`.
+
+### Database Restore Test
+
+Practice restores before beta. A simple local restore test is:
+
+```bash
+./scripts/backup_database.sh
+docker compose -p botforge_restore_test up -d postgres
+./scripts/restore_database.sh --project-name botforge_restore_test
+docker compose -p botforge_restore_test exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
+docker compose -p botforge_restore_test down -v
+```
+
+That uses a separate Compose project and volume so the normal local database is
+not overwritten. With no `--backup-file`, the restore script uses the newest
+`*.dump` file from `backups/`.
+
+The restore script is destructive. It restores into the running `postgres`
+service with `pg_restore --clean --if-exists --no-owner`.
+
+After restoring, run a smoke test:
+
+```bash
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt"'
+docker compose logs --tail=100 botforge
+```
+
+Confirm expected users, invites, policy acceptances, and inbound message rows
+are present before trusting the backup procedure.
+
+### Restart And Rollback Basics
+
+For a normal restart, use:
+
+```bash
+docker compose restart botforge
+```
+
+For a code rollback, check out the previous known-good revision, rebuild only
+the bot image, and keep the database volume in place:
+
+```bash
+git checkout <known-good-revision>
+docker compose up -d --build botforge
+docker compose logs -f botforge
+```
+
+If a migration was already applied, restore the latest tested backup into a
+clean PostgreSQL volume instead of editing migration state by hand.
+
+### Secret Rotation
+
+If the Telegram token leaks:
+
+1. Open BotFather and revoke/regenerate the token immediately.
+2. Stop BotForge so the leaked token is no longer used:
+   `docker compose stop botforge`.
+3. Update `TELEGRAM_TOKEN` in the uncommitted `.env`.
+4. Start the bot again with `docker compose up -d botforge`.
+5. Check `docker compose logs --tail=100 botforge` for startup errors.
+6. Search recent commits, PRs, issues, chat logs, and deployment notes for the
+   leaked token. Remove or rotate any copied secret.
+
+If Ollama or future provider credentials leak, rotate them with the provider,
+update `.env`, restart BotForge, and avoid posting the old values in issue
+comments or logs.
+
 ## Persistent Data
 
 Docker Compose creates named volumes with the Compose project prefix. With the
@@ -491,6 +745,10 @@ python -m forge_bot.main
 
 Run checks after installing development dependencies.
 
+The full beta release gate, including manual Docker, invite, privacy, restart,
+backup/restore, rollback, and sign-off steps, lives in
+[docs/beta-release-checklist.md](docs/beta-release-checklist.md).
+
 Code quality checks (CI: `lint.yml`):
 
 ```bash
@@ -511,9 +769,12 @@ python -m pytest
 
 ## Current Limitations
 
-- Account privacy controls such as `/privacy`, `/memory_clear`, and
-  `/delete_my_data` are planned as explicit commands.
-- The default AI profile uses `gemma2:2b`. Change the active profile's
+- Conversation memory is bounded to the latest configured raw messages plus a
+  compacted summary. It is not vector search and does not retrieve arbitrary old
+  facts beyond what was compacted.
+- Telegram updates that were never delivered to the bot and are older than
+  Telegram's pending-update retention window cannot be recovered.
+- The default AI profile uses `gemma3:4b`. Change the active profile's
   `llm_model` to use a different runtime model.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.

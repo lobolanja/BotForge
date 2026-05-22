@@ -1,5 +1,6 @@
+import logging
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
 from typing import Any
@@ -11,6 +12,8 @@ from psycopg.rows import dict_row
 
 from .config import get_settings
 from .roles import is_admin_role
+
+logger = logging.getLogger(__name__)
 
 # The time to live for invite tokens, in hours.
 DEFAULT_INVITE_TOKEN_TTL_HOURS = 24
@@ -45,6 +48,19 @@ class InviteRedemption:
 class PolicyVersions:
     policy_version: str
     privacy_notice_version: str
+
+
+@dataclass(frozen=True)
+class MemoryClearResult:
+    conversation_memory: int = 0
+    compacted_memory: int = 0
+
+
+@dataclass(frozen=True)
+class UserDeletionResult:
+    status: str
+    memory: MemoryClearResult = field(default_factory=MemoryClearResult)
+    inbound_messages: int = 0
 
 
 def current_policy_versions() -> PolicyVersions:
@@ -131,23 +147,31 @@ def conect_db() -> Any | None:
             row_factory=dict_row,
         )
         return connection
-    except psycopg.Error as err:
-        print(f"Error connecting to the database: {err}")
+    except psycopg.Error:
+        logger.exception("database_connection_failed")
         return None
 
 
-def verify_user(telegram_id: int) -> bool:
+def verify_user(telegram_id: int) -> bool | None:
     """Check whether a Telegram user is linked to an internal account."""
     conn = conect_db()
     if not conn:
-        return False
+        return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id FROM users WHERE telegram_id = %s",
+                """
+                SELECT id
+                FROM users
+                WHERE telegram_id = %s
+                  AND deleted_at IS NULL
+                """,
                 (telegram_id,),
             )
             return cursor.fetchone() is not None
+    except psycopg.Error:
+        logger.exception("verify_user_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 
@@ -160,11 +184,19 @@ def get_user_by_telegram_id(telegram_id: int) -> dict[str, Any] | None:
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, email, role FROM users WHERE telegram_id = %s",
+                """
+                SELECT id, username, email, role
+                FROM users
+                WHERE telegram_id = %s
+                  AND deleted_at IS NULL
+                """,
                 (telegram_id,),
             )
             user: dict[str, Any] | None = cursor.fetchone()
             return user
+    except psycopg.Error:
+        logger.exception("get_user_by_telegram_id_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 
@@ -178,17 +210,20 @@ def get_user_role_by_telegram_id(telegram_id: int) -> str | None:
     return role if isinstance(role, str) else None
 
 
-def is_admin(telegram_id: int) -> bool:
+def is_admin(telegram_id: int) -> bool | None:
     """Check whether the logged-in Telegram user has the admin role."""
-    return is_admin_role(get_user_role_by_telegram_id(telegram_id))
+    role = get_user_role_by_telegram_id(telegram_id)
+    if role is None:
+        return None
+    return is_admin_role(role)
 
 
-def has_current_policy_acceptance(telegram_id: int) -> bool:
+def has_current_policy_acceptance(telegram_id: int) -> bool | None:
     """Check whether the Telegram user accepted the current required policy."""
     versions = current_policy_versions()
     conn = conect_db()
     if not conn:
-        return False
+        return None
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -197,6 +232,7 @@ def has_current_policy_acceptance(telegram_id: int) -> bool:
                 FROM user_policy_acceptances upa
                 JOIN users u ON u.id = upa.user_id
                 WHERE u.telegram_id = %s
+                  AND u.deleted_at IS NULL
                   AND upa.policy_version = %s
                   AND upa.privacy_notice_version = %s
                   AND upa.accepted_at IS NOT NULL
@@ -210,6 +246,9 @@ def has_current_policy_acceptance(telegram_id: int) -> bool:
                 ),
             )
             return cursor.fetchone() is not None
+    except psycopg.Error:
+        logger.exception("policy_acceptance_check_failed telegram_id=%s", telegram_id)
+        return None
     finally:
         conn.close()
 
@@ -234,6 +273,7 @@ def accept_current_policy(telegram_id: int, source: str = "telegram") -> bool:
                 SELECT id, %s, %s, CURRENT_TIMESTAMP, %s
                 FROM users
                 WHERE telegram_id = %s
+                  AND deleted_at IS NULL
                 ON CONFLICT (
                     user_id,
                     policy_version,
@@ -275,6 +315,7 @@ def decline_current_policy(telegram_id: int) -> bool:
                 FROM users u
                 WHERE u.id = upa.user_id
                   AND u.telegram_id = %s
+                  AND u.deleted_at IS NULL
                   AND upa.policy_version = %s
                   AND upa.privacy_notice_version = %s
                   AND upa.revoked_at IS NULL
@@ -455,7 +496,12 @@ def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT id, username, email FROM users WHERE telegram_id = %s",
+                """
+                SELECT id, username, email
+                FROM users
+                WHERE telegram_id = %s
+                  AND deleted_at IS NULL
+                """,
                 (telegram_id,),
             )
             existing_user = cursor.fetchone()
@@ -583,10 +629,313 @@ def status_user(telegram_id: int) -> dict[str, Any] | None:
     try:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT username, email, role FROM users WHERE telegram_id = %s",
+                """
+                SELECT username, email, role
+                FROM users
+                WHERE telegram_id = %s
+                  AND deleted_at IS NULL
+                """,
                 (telegram_id,),
             )
             user: dict[str, Any] | None = cursor.fetchone()
             return user
     finally:
         conn.close()
+
+
+def clear_user_memory(user_id: int) -> MemoryClearResult:
+    """Clear personalization memory for one internal user.
+
+    Conversation memory is safe to hard-delete because it is user-controlled
+    personalization data, not invite, policy, or security audit state.
+    """
+    conn = conect_db()
+    if not conn:
+        return MemoryClearResult()
+
+    try:
+        with conn.cursor() as cursor:
+            conversation_memory, compacted_memory = _clear_user_memory_records(
+                cursor,
+                user_id=user_id,
+            )
+            conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception("clear_user_memory_failed user_id=%s", user_id)
+        return MemoryClearResult()
+    finally:
+        conn.close()
+
+    try:
+        from .memory_store import clear_cached_user_memory
+
+        clear_cached_user_memory(user_id=user_id)
+    except Exception:
+        logger.exception(
+            "clear_user_memory_cache_invalidation_failed user_id=%s",
+            user_id,
+        )
+
+    return MemoryClearResult(
+        conversation_memory=conversation_memory,
+        compacted_memory=compacted_memory,
+    )
+
+
+def clear_memory_for_telegram_user(telegram_id: int) -> MemoryClearResult | None:
+    """Clear personalization memory for a linked Telegram user."""
+    conn = conect_db()
+    if not conn:
+        return MemoryClearResult()
+
+    try:
+        with conn.cursor() as cursor:
+            user = _fetch_active_user_for_update(cursor, telegram_id)
+            if not user:
+                conn.rollback()
+                return None
+            conversation_memory, compacted_memory = _clear_user_memory_records(
+                cursor,
+                user_id=int(user["id"]),
+            )
+            _anonymize_answered_inbound_messages(cursor, telegram_id)
+            conn.commit()
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception(
+            "clear_memory_for_telegram_user_failed telegram_id=%s",
+            telegram_id,
+        )
+        return MemoryClearResult()
+    finally:
+        conn.close()
+
+    try:
+        from .memory_store import clear_cached_user_memory
+
+        clear_cached_user_memory(user_id=int(user["id"]))
+    except Exception:
+        logger.exception(
+            "clear_memory_for_telegram_user_cache_invalidation_failed telegram_id=%s",
+            telegram_id,
+        )
+
+    return MemoryClearResult(
+        conversation_memory=conversation_memory,
+        compacted_memory=compacted_memory,
+    )
+
+
+def request_user_deletion(telegram_id: int) -> UserDeletionResult:
+    """Create or refresh a durable beta deletion request for a linked user."""
+    conn = conect_db()
+    if not conn:
+        return UserDeletionResult("db_error")
+    try:
+        with conn.cursor() as cursor:
+            user = _fetch_active_user_for_update(cursor, telegram_id)
+            if not user:
+                conn.rollback()
+                return UserDeletionResult("not_linked")
+
+            cursor.execute(
+                """
+                UPDATE users
+                SET deletion_requested_at = COALESCE(
+                        deletion_requested_at,
+                        CURRENT_TIMESTAMP
+                    ),
+                    deletion_reason = COALESCE(
+                        deletion_reason,
+                        'telegram_self_service'
+                    )
+                WHERE id = %s
+                """,
+                (user["id"],),
+            )
+            cursor.execute(
+                """
+                INSERT INTO user_deletion_requests (
+                    user_id,
+                    telegram_user_id,
+                    status
+                )
+                VALUES (%s, %s, 'requested')
+                """,
+                (user["id"], telegram_id),
+            )
+            conn.commit()
+            return UserDeletionResult("requested")
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception("user_deletion_request_failed telegram_id=%s", telegram_id)
+        return UserDeletionResult("db_error")
+    finally:
+        conn.close()
+
+
+def confirm_user_deletion(telegram_id: int) -> UserDeletionResult:
+    """Confirm beta deletion or request manual handling for admins."""
+    conn = conect_db()
+    if not conn:
+        return UserDeletionResult("db_error")
+    try:
+        with conn.cursor() as cursor:
+            user = _fetch_active_user_for_update(cursor, telegram_id)
+            if not user:
+                conn.rollback()
+                return UserDeletionResult("not_linked")
+
+            if is_admin_role(str(user["role"])):
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET deletion_requested_at = COALESCE(
+                            deletion_requested_at,
+                            CURRENT_TIMESTAMP
+                        ),
+                        deletion_reason = 'admin_manual_review'
+                    WHERE id = %s
+                    """,
+                    (user["id"],),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO user_deletion_requests (
+                        user_id,
+                        telegram_user_id,
+                        status,
+                        confirmed_at
+                    )
+                    VALUES (%s, %s, 'confirmed', CURRENT_TIMESTAMP)
+                    """,
+                    (user["id"], telegram_id),
+                )
+                conn.commit()
+                return UserDeletionResult("manual_review_requested")
+
+            memory = clear_user_memory(int(user["id"]))
+            inbound_messages = _anonymize_inbound_messages(cursor, telegram_id)
+            cursor.execute(
+                """
+                INSERT INTO user_deletion_requests (
+                    user_id,
+                    telegram_user_id,
+                    status,
+                    requested_at,
+                    confirmed_at,
+                    completed_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    'completed',
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                )
+                """,
+                (user["id"], telegram_id),
+            )
+            cursor.execute(
+                """
+                UPDATE users
+                SET username = %s,
+                    email = NULL,
+                    telegram_id = NULL,
+                    password = NULL,
+                    deleted_at = CURRENT_TIMESTAMP,
+                    deletion_requested_at = COALESCE(
+                        deletion_requested_at,
+                        CURRENT_TIMESTAMP
+                    ),
+                    deletion_reason = 'telegram_self_service'
+                WHERE id = %s
+                  AND deleted_at IS NULL
+                """,
+                (f"deleted_user_{user['id']}", user["id"]),
+            )
+            if int(cursor.rowcount or 0) != 1:
+                conn.rollback()
+                return UserDeletionResult("db_error")
+            conn.commit()
+            return UserDeletionResult(
+                "deleted",
+                memory=memory,
+                inbound_messages=inbound_messages,
+            )
+    except psycopg.Error:
+        conn.rollback()
+        logger.exception("user_deletion_confirm_failed telegram_id=%s", telegram_id)
+        return UserDeletionResult("db_error")
+    finally:
+        conn.close()
+
+
+def _fetch_active_user_for_update(
+    cursor: Any,
+    telegram_id: int,
+) -> dict[str, Any] | None:
+    cursor.execute(
+        """
+        SELECT id, role
+        FROM users
+        WHERE telegram_id = %s
+          AND deleted_at IS NULL
+        FOR UPDATE
+        """,
+        (telegram_id,),
+    )
+    user: dict[str, Any] | None = cursor.fetchone()
+    return user
+
+
+def _clear_user_memory_records(cursor: Any, *, user_id: int) -> tuple[int, int]:
+    cursor.execute(
+        "DELETE FROM conversation_messages WHERE user_id = %s",
+        (user_id,),
+    )
+    conversation_memory = int(cursor.rowcount or 0)
+    cursor.execute(
+        "DELETE FROM user_memory_summaries WHERE user_id = %s",
+        (user_id,),
+    )
+    compacted_memory = int(cursor.rowcount or 0)
+    return conversation_memory, compacted_memory
+
+
+def _anonymize_answered_inbound_messages(cursor: Any, telegram_id: int) -> int:
+    """Remove answered text content so memory cannot bootstrap after clearing."""
+    cursor.execute(
+        """
+        UPDATE inbound_messages
+        SET text = NULL,
+            raw_update = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_user_id = %s
+          AND status = 'answered'
+          AND message_type = 'text'
+        """,
+        (telegram_id,),
+    )
+    return int(cursor.rowcount or 0)
+
+
+def _anonymize_inbound_messages(cursor: Any, telegram_id: int) -> int:
+    cursor.execute(
+        """
+        UPDATE inbound_messages
+        SET telegram_user_id = NULL,
+            text = NULL,
+            file_id = NULL,
+            file_unique_id = NULL,
+            file_name = NULL,
+            mime_type = NULL,
+            raw_update = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_user_id = %s
+        """,
+        (telegram_id,),
+    )
+    return int(cursor.rowcount or 0)

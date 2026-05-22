@@ -44,3 +44,32 @@ def test_campaign_invite_migration_tracks_limited_reuse() -> None:
     assert "max_uses INTEGER NOT NULL DEFAULT 1" in contents
     assert "used_count INTEGER NOT NULL DEFAULT 0" in contents
     assert "CREATE TABLE IF NOT EXISTS invite_token_redemptions" in contents
+
+
+def test_user_deletion_controls_migration_tracks_soft_delete_and_requests() -> None:
+    migration = Path("migrations/versions/20260518_0007_add_user_deletion_controls.py")
+    contents = migration.read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260518_0007"' in contents
+    assert 'down_revision: str | Sequence[str] | None = "20260513_0006"' in contents
+    assert "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL" in contents
+    assert "ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMPTZ NULL" in contents
+    assert "CREATE TABLE IF NOT EXISTS user_deletion_requests" in contents
+    assert (
+        "CHECK (status IN ('requested', 'confirmed', 'completed', 'failed'))"
+        in contents
+    )
+
+
+def test_conversation_memory_migration_tracks_recent_and_compacted_memory() -> None:
+    migration = Path("migrations/versions/20260519_0008_create_conversation_memory.py")
+    contents = migration.read_text(encoding="utf-8")
+
+    assert 'revision: str = "20260519_0008"' in contents
+    assert 'down_revision: str | Sequence[str] | None = "20260518_0007"' in contents
+    assert "CREATE TABLE IF NOT EXISTS conversation_messages" in contents
+    assert "bot_profile_id TEXT NOT NULL" in contents
+    assert "summarized_at TIMESTAMPTZ NULL" in contents
+    assert "CHECK (role IN ('user', 'assistant'))" in contents
+    assert "CREATE TABLE IF NOT EXISTS user_memory_summaries" in contents
+    assert "UNIQUE (user_id, bot_profile_id)" in contents

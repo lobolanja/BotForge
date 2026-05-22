@@ -43,6 +43,7 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.black-cache-temp/
 nosetests.xml
 coverage.xml
 *.cover
@@ -158,6 +159,10 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Local operational artifacts
+backups/
+*.dump
 
 # Spyder project settings
 .spyderproject

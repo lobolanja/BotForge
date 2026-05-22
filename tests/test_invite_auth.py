@@ -10,9 +10,11 @@ from forge_bot.database import InviteRedemption
 class FakeMessage:
     def __init__(self) -> None:
         self.replies: list[str] = []
+        self.reply_calls: list[dict[str, object | None]] = []
 
-    async def reply_text(self, text: str) -> None:
+    async def reply_text(self, text: str, reply_markup: object | None = None) -> None:
         self.replies.append(text)
+        self.reply_calls.append({"text": text, "reply_markup": reply_markup})
 
 
 def create_update(user_id: int = 123) -> Any:
@@ -42,18 +44,38 @@ async def test_start_without_token_shows_invite_identity_copy(
         "forge_bot.commands.auth.redeem_invite_token",
         redeem_invite_token,
     )
+    monkeypatch.setattr("forge_bot.commands.auth.status_user", lambda telegram_id: None)
 
     await start(update, create_context())
 
     assert not called
     assert update.message.replies == [
-        "Welcome to BotForge. Open your invite link to connect your identity."
+        "Welcome to BotForge.\n\n"
+        "Next step: Open your invite link to connect your identity"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_start_without_token_reports_already_linked_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = create_update()
+    monkeypatch.setattr(
+        "forge_bot.commands.auth.status_user",
+        lambda telegram_id: {"username": "telegram_123_1", "role": "user"},
+    )
+
+    await start(update, create_context())
+
+    assert update.message.replies == [
+        "Welcome back to BotForge.\n\nStatus: This Telegram account is already linked"
     ]
 
 
 @pytest.mark.asyncio
 async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> None:
     update = create_update(user_id=456)
+    reply_markup = object()
 
     def redeem_invite_token(raw_token: str, telegram_id: int) -> InviteRedemption:
         assert raw_token == "token-123"
@@ -73,24 +95,37 @@ async def test_start_redeems_valid_token(monkeypatch: pytest.MonkeyPatch) -> Non
         "forge_bot.commands.auth.policy_prompt",
         lambda: "Policy prompt",
     )
+    monkeypatch.setattr(
+        "forge_bot.commands.auth.policy_action_keyboard",
+        lambda: reply_markup,
+    )
 
     await start(update, create_context(args=["token-123"]))
 
     assert update.message.replies == [
-        "Welcome to BotForge. Open your invite link to connect your identity.",
+        "Welcome to BotForge.\n\n"
+        "Next step: Open your invite link to connect your identity",
         "Invite accepted.\n\nPolicy prompt",
     ]
+    assert update.message.reply_calls[-1]["reply_markup"] is reply_markup
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("redemption_status", "expected_reply"),
     [
-        ("invalid", "This invite link is invalid."),
-        ("expired", "This invite link has expired."),
-        ("used", "This invite link has already been used."),
-        ("campaign_full", "This campaign invite link is full."),
-        ("db_error", "Invite identity connection is temporarily unavailable."),
+        ("invalid", "I could not accept that invite because it is invalid."),
+        ("expired", "I could not accept that invite because it has expired."),
+        ("used", "I could not accept that invite because it has already been used."),
+        (
+            "campaign_full",
+            "I could not accept that invite because it has reached its use limit.",
+        ),
+        (
+            "db_error",
+            "Invite redemption is temporarily unavailable. "
+            "Please try again in a moment.",
+        ),
     ],
 )
 async def test_start_reports_token_failures(
@@ -125,7 +160,9 @@ async def test_start_reports_already_linked_user(
 
     await start(update, create_context(args=["token-123"]))
 
-    assert update.message.replies[-1] == "This Telegram account is already linked."
+    assert update.message.replies[-1] == (
+        "This Telegram account is already linked.\n\nAvailable actions:\n/status"
+    )
 
 
 @pytest.mark.asyncio
@@ -143,7 +180,7 @@ async def test_status_shows_identity_copy(monkeypatch: pytest.MonkeyPatch) -> No
     await status(update, create_context())
 
     assert update.message.replies == [
-        "Your Telegram identity is linked to person@example.com with role: admin."
+        "Identity linked.\n\nEmail: person@example.com\nRole: admin"
     ]
     assert "logout" not in update.message.replies[0].lower()
     assert "logged in" not in update.message.replies[0].lower()
@@ -165,9 +202,7 @@ async def test_status_handles_campaign_identity_without_email(
 
     await status(update, create_context())
 
-    assert update.message.replies == [
-        "Your Telegram identity is linked with role: user."
-    ]
+    assert update.message.replies == ["Identity linked.\n\nRole: user"]
 
 
 @pytest.mark.asyncio
@@ -179,4 +214,7 @@ async def test_status_reports_unlinked_identity(
 
     await status(update, create_context())
 
-    assert update.message.replies == ["Your Telegram identity is not linked yet."]
+    assert update.message.replies == [
+        "Identity not linked.\n\n"
+        "Next step: Open your invite link to connect your account"
+    ]
