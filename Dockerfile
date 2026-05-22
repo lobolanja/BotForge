@@ -17,4 +17,4 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 RUN useradd --system --create-home --home-dir /home/botforge botforge
 USER botforge
 
-CMD ["sh", "-c", "python -c 'from forge_bot.config import validate_settings; validate_settings()' && alembic upgrade head && python -m forge_bot.main"]
+CMD ["sh", "-c", "python -c 'from forge_bot.config import validate_settings; validate_settings()' && alembic upgrade head && python -m forge_bot.bootstrap_admin_invite && python -m forge_bot.main"]

@@ -86,6 +86,11 @@ NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
+
+BOOTSTRAP_ADMIN_EMAIL=
+BOOTSTRAP_BOT_USERNAME=
+BOOTSTRAP_ADMIN_INVITE_TTL_HOURS=24
+BOOTSTRAP_ADMIN_INVITE_FORCE=false
 ```
 
 Notes:
@@ -115,6 +120,12 @@ Notes:
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
+- `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_BOT_USERNAME` optionally create the
+  first admin invite during Docker startup, after migrations run. Leave them
+  blank to disable the bootstrap. If an admin user already exists, no invite is
+  created.
+- `BOOTSTRAP_ADMIN_INVITE_FORCE=true` creates a fresh admin invite even when an
+  unused admin invite for the same email already exists.
 - Do not commit `.env`.
 
 ## Bot Profiles And Prompt Configuration
@@ -503,6 +514,22 @@ UPDATE users
 SET role = 'admin'
 WHERE username = '<bot_user>';
 ```
+
+Alternatively, let Docker startup create the first admin invite. Set these in
+`.env`, then run `docker compose up` and copy the printed invite link from the
+`botforge` logs:
+
+```env
+BOOTSTRAP_ADMIN_EMAIL=you@example.com
+BOOTSTRAP_BOT_USERNAME=<bot_username>
+BOOTSTRAP_ADMIN_INVITE_TTL_HOURS=24
+BOOTSTRAP_ADMIN_INVITE_FORCE=false
+```
+
+The startup bootstrap runs after migrations. It skips creation when an active
+admin user already exists, and it also skips when an unused admin invite for the
+same email is still valid. Set `BOOTSTRAP_ADMIN_INVITE_FORCE=true` only if you
+lost the original link and need a new one.
 
 Supported roles are `admin`, `professional`, and `user`. New users default to
 `user`; `professional` is reserved for future behavior and does not grant admin
