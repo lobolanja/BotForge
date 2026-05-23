@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from forge_bot.bot_profile import BotProfileError, load_active_bot_profile
+from forge_bot.bot_profile import (
+    MAX_CONTEXT_DOCUMENT_CHARS,
+    BotProfileError,
+    load_active_bot_profile,
+)
 from forge_bot.prompting import assemble_prompt_messages
 
 
@@ -60,6 +64,10 @@ def test_load_nutrition_bot_profile_successfully() -> None:
     assert profile.llm_provider == "nvidia"
     assert profile.llm_model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     assert profile.memory_enabled is True
+    assert len(profile.context_documents) == 1
+    assert profile.context_documents[0].name == "demo_plan.json"
+    assert '"situaciones"' in profile.context_documents[0].content
+    assert '"comidas"' in profile.context_documents[0].content
     assert "no finjas que lo hay" in profile.system_prompt
     assert "No diagnostiques" in profile.system_prompt
     assert any("no inventes dietas" in rule for rule in profile.domain_rules)
@@ -78,6 +86,44 @@ def test_fail_when_required_profile_field_is_empty(tmp_path: Path) -> None:
     write_profile(tmp_path, overrides={"bot_display_name": ""})
 
     with pytest.raises(BotProfileError, match="bot_display_name"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
+
+
+def test_fail_when_context_file_is_missing(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"context_files": ["missing.json"]})
+
+    with pytest.raises(BotProfileError, match="context file was not found"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
+
+
+def test_fail_when_context_file_leaves_profile_folder(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"context_files": ["../outside.json"]})
+    (tmp_path / "bot_profiles" / "outside.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(BotProfileError, match="inside the profile folder"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
+
+
+def test_fail_when_context_file_is_too_large(tmp_path: Path) -> None:
+    profile_dir = write_profile(tmp_path, overrides={"context_files": ["large.txt"]})
+    (profile_dir / "large.txt").write_text(
+        "x" * (MAX_CONTEXT_DOCUMENT_CHARS + 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(BotProfileError, match="too large"):
         load_active_bot_profile(
             "nutrition_dev",
             "bot_profiles",
@@ -140,6 +186,10 @@ def test_nutrition_profile_prompt_assembly_includes_guardrails() -> None:
     assert "Disclaimer: Este bot ayuda a interpretar un plan nutricional" in (
         system_message
     )
+    assert "Profile context documents:" in system_message
+    assert "Document: demo_plan.json" in system_message
+    assert '"crossfit"' in system_message
+    assert '"comida_2"' in system_message
     assert messages[1]["role"] == "system"
     assert "El usuario prefiere cenas sencillas." in messages[1]["content"]
 

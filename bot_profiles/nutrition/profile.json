@@ -3,6 +3,9 @@
   "bot_display_name": "Bot Nutricionista",
   "bot_description": "Perfil nutricionista para ayudar a aplicar planes nutricionales estructurados desde Telegram.",
   "system_prompt_file": "system_prompt.md",
+  "context_files": [
+    "demo_plan.json"
+  ],
   "domain_rules": [
     "Responde en espanol por defecto con tono claro, directo y practico.",
     "Ayuda a interpretar y aplicar el plan nutricional del usuario; no inventes dietas completas desde cero.",

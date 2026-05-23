@@ -142,6 +142,7 @@ bot_profiles/
   nutrition/
     profile.json
     system_prompt.md
+    demo_plan.json
     docs/
 ```
 
@@ -188,6 +189,12 @@ Its product notes, user journeys, data contracts, and roadmap live under
 it helps interpret a plan provided by the user, asks for missing context before
 giving quantities, and avoids inventing diets, medical advice, macros, or JSON
 details unless the user explicitly asks.
+
+For local validation before user-level persistence exists, the nutrition profile
+also loads `bot_profiles/nutrition/demo_plan.json` as read-only profile context.
+That demo plan includes `situaciones` plus `comidas`, so the bot can answer
+questions such as "hoy tengo crossfit, que como al mediodia?" by resolving the
+day situation and meal moment to the matching food block.
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
 deterministic order: bot system prompt and rules first, optional memory, recent

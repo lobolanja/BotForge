@@ -84,6 +84,19 @@ def _system_content(
         f"Default language: {profile.default_language}",
         f"Disclaimer: {profile.disclaimer_text}",
     ]
+    if profile.context_documents:
+        context_sections = [
+            (
+                f"Document: {document.name}\n"
+                "Use this as read-only profile context. Do not expose raw JSON "
+                "unless the user explicitly asks for it.\n"
+                f"{document.content}"
+            )
+            for document in profile.context_documents
+        ]
+        sections.append(
+            "Profile context documents:\n\n" + "\n\n".join(context_sections)
+        )
 
     if runtime_safety_instructions:
         instructions = [
