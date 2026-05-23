@@ -51,6 +51,20 @@ def test_load_default_bot_profile_successfully() -> None:
     assert profile.llm_provider == "ollama"
 
 
+def test_load_nutrition_bot_profile_successfully() -> None:
+    profile = load_active_bot_profile("nutrition", "bot_profiles")
+
+    assert profile.bot_profile_id == "nutrition"
+    assert profile.bot_display_name == "Bot Nutricionista"
+    assert profile.default_language == "es"
+    assert profile.llm_provider == "ollama"
+    assert profile.llm_model == "gemma3:4b"
+    assert profile.memory_enabled is True
+    assert "no finjas que lo hay" in profile.system_prompt
+    assert "No diagnostiques" in profile.system_prompt
+    assert any("no inventes dietas" in rule for rule in profile.domain_rules)
+
+
 def test_fail_when_selected_profile_is_missing(tmp_path: Path) -> None:
     with pytest.raises(BotProfileError, match="was not found"):
         load_active_bot_profile(
@@ -106,6 +120,28 @@ def test_prompt_assembly_includes_system_prompt_before_user_message(
         "role": "user",
         "content": "What should I eat after training?",
     }
+
+
+def test_nutrition_profile_prompt_assembly_includes_guardrails() -> None:
+    profile = load_active_bot_profile("nutrition", "bot_profiles")
+
+    messages = assemble_prompt_messages(
+        profile,
+        current_user_message="Hoy tengo crossfit, que como al mediodia?",
+        compacted_user_memory="El usuario prefiere cenas sencillas.",
+    )
+
+    system_message = messages[0]["content"]
+    assert "Eres un bot nutricionista conversacional" in system_message
+    assert "Las cantidades, opciones y ajustes concretos deben salir del plan" in (
+        system_message
+    )
+    assert "No muestres macros, calorias ni calculos detallados" in system_message
+    assert "Disclaimer: Este bot ayuda a interpretar un plan nutricional" in (
+        system_message
+    )
+    assert messages[1]["role"] == "system"
+    assert "El usuario prefiere cenas sencillas." in messages[1]["content"]
 
 
 def test_changing_profile_changes_prompt_without_code_changes(tmp_path: Path) -> None:

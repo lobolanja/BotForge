@@ -139,6 +139,10 @@ bot_profiles/
   default_dev/
     profile.json
     system_prompt.md
+  nutrition/
+    profile.json
+    system_prompt.md
+    docs/
 ```
 
 `profile.json` defines the assistant identity, model choice, feature flags,
@@ -171,6 +175,18 @@ To create a new bot profile:
 6. Set `BOT_PROFILE=<new_profile_id>` in `.env`.
 7. If the model changed, set `OLLAMA_MODEL` to the same value so Compose pulls it.
 8. Restart the bot container.
+
+The built-in nutrition profile can be enabled with:
+
+```env
+BOT_PROFILE=nutrition
+```
+
+Its product notes, user journeys, data contracts, and roadmap live under
+`bot_profiles/nutrition/docs/`. The first version is intentionally conservative:
+it helps interpret a plan provided by the user, asks for missing context before
+giving quantities, and avoids inventing diets, medical advice, macros, or JSON
+details unless the user explicitly asks.
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
 deterministic order: bot system prompt and rules first, optional memory, recent
