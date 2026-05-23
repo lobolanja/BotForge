@@ -77,12 +77,12 @@ DB_PORT=5432
 OLLAMA_HOST=http://ollama:11434
 OLLAMA_MODEL=gemma3:4b
 
-LLM_PRIMARY_PROVIDER=ollama
+LLM_PRIMARY_PROVIDER=profile
 LLM_FALLBACK_PROVIDER=nvidia
 LLM_FALLBACK_QUEUE_WAIT_SECONDS=100
 NVIDIA_API_KEY=
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
+NVIDIA_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
@@ -104,14 +104,14 @@ Notes:
   using this stack outside your local machine.
 - `DB_HOST` must be `postgres` when running inside Docker Compose.
 - `OLLAMA_HOST` must be `http://ollama:11434` when running inside Docker Compose.
-- `OLLAMA_MODEL` is used by the `ollama-pull` container. Keep it aligned with
-  the active profile's `llm_model`. The default is `gemma3:4b`, a balanced
-  Gemma model for local development on machines with limited RAM. If these
-  values drift, Compose can pull one model while the bot tries to use another
-  at runtime.
-- `LLM_PRIMARY_PROVIDER=ollama` keeps local inference as the first choice.
-  `LLM_FALLBACK_PROVIDER=nvidia` enables fallback through NVIDIA NIM when
-  Ollama errors or when the lifecycle queue wait exceeds
+- `OLLAMA_MODEL` is used only by the `ollama-pull` container. Keep it aligned
+  with the active profile's `llm_model` only when that profile uses Ollama.
+  The default is `gemma3:4b`, a balanced Gemma model for local development on
+  machines with limited RAM.
+- `LLM_PRIMARY_PROVIDER=profile` lets each bot profile select its own provider.
+  Set it to `ollama` or `nvidia` only when you want to force one provider for
+  every profile. `LLM_FALLBACK_PROVIDER=nvidia` enables fallback through NVIDIA
+  NIM when the primary provider errors or when the lifecycle queue wait exceeds
   `LLM_FALLBACK_QUEUE_WAIT_SECONDS`.
 - `NVIDIA_BASE_URL` defaults to NVIDIA's OpenAI-compatible hosted NIM endpoint,
   `https://integrate.api.nvidia.com/v1`. Choose `NVIDIA_MODEL` from the current
@@ -171,9 +171,10 @@ To create a new bot profile:
 2. Update `profile.json`, making sure `bot_profile_id` matches the folder name.
 3. Edit `system_prompt.md` with the assistant's role and behavior.
 4. Put domain-specific rules in `domain_rules`.
-5. Set `llm_model` to the Ollama model the bot should use.
+5. Set `llm_provider` and `llm_model` to the provider/model the bot should use.
 6. Set `BOT_PROFILE=<new_profile_id>` in `.env`.
-7. If the model changed, set `OLLAMA_MODEL` to the same value so Compose pulls it.
+7. If the profile uses Ollama and the model changed, set `OLLAMA_MODEL` to the
+   same value so Compose pulls it.
 8. Restart the bot container.
 
 The built-in nutrition profile can be enabled with:
@@ -369,23 +370,26 @@ Telegram chat alone. Users can remove their recent and compacted memory with
 
 ## 7. LLM Provider Fallback
 
-BotForge uses a small provider abstraction around model calls. The primary
-provider is Ollama by default. If Ollama is unavailable or returns an error, the
-engine tries the configured fallback provider once and sends only that single
-answer to the user.
+BotForge uses a small provider abstraction around model calls. By default,
+`LLM_PRIMARY_PROVIDER=profile`, so the active bot profile selects the primary
+provider with its `llm_provider` field. The `default_dev` profile uses Ollama;
+the `nutrition` profile uses NVIDIA NIM. Set `LLM_PRIMARY_PROVIDER=ollama` or
+`LLM_PRIMARY_PROVIDER=nvidia` only to force a global override. If the primary
+provider is unavailable or returns an error, the engine tries the configured
+fallback provider once and sends only that single answer to the user.
 
 The request lifecycle also records how long a message waited before processing
 started. When that wait is greater than `LLM_FALLBACK_QUEUE_WAIT_SECONDS`
 (default: 100), BotForge selects the fallback provider immediately instead of
 starting local inference.
 
-NVIDIA NIM fallback is configured with:
+NVIDIA NIM is configured with:
 
 ```env
 LLM_FALLBACK_PROVIDER=nvidia
 NVIDIA_API_KEY=<nvidia_api_key>
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL=nvidia/llama-3.1-nemotron-nano-8b-v1
+NVIDIA_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
 ```
 
 The NVIDIA API Catalog exposes hosted NIM language models through
@@ -817,8 +821,9 @@ python -m pytest
   facts beyond what was compacted.
 - Telegram updates that were never delivered to the bot and are older than
   Telegram's pending-update retention window cannot be recovered.
-- The default AI profile uses `gemma3:4b`. Change the active profile's
-  `llm_model` to use a different runtime model.
+- Provider/model selection is profile-driven by default. `default_dev` uses
+  Ollama with `gemma3:4b`; `nutrition` uses NVIDIA NIM with the configured
+  `NVIDIA_MODEL`.
 - The application uses Telegram polling, so it should run as one active bot
   container per Telegram token.
 

@@ -9,11 +9,11 @@ from dotenv import load_dotenv
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma3:4b"
-DEFAULT_LLM_PRIMARY_PROVIDER = "ollama"
+DEFAULT_LLM_PRIMARY_PROVIDER = "profile"
 DEFAULT_LLM_FALLBACK_PROVIDER = "nvidia"
 DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS = 100
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
+DEFAULT_NVIDIA_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"

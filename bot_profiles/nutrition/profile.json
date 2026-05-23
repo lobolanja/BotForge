@@ -15,8 +15,8 @@
   ],
   "disclaimer_text": "Este bot ayuda a interpretar un plan nutricional aportado por el usuario. No sustituye a un nutricionista, medico u otro profesional sanitario.",
   "default_language": "es",
-  "llm_provider": "ollama",
-  "llm_model": "gemma3:4b",
+  "llm_provider": "nvidia",
+  "llm_model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
   "memory_enabled": true,
   "analytics_enabled": false
 }

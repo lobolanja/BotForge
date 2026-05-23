@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -8,6 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+import certifi
 import ollama
 
 from .bot_profile import BotProfile, load_active_bot_profile
@@ -23,6 +25,7 @@ AI_ERROR_FALLBACK = (
     "The AI service is temporarily unavailable. Please try again in a moment."
 )
 FALLBACK_DISABLED_VALUES = {"", "none", "disabled", "off"}
+PROFILE_PRIMARY_PROVIDER_VALUES = {"", "profile"}
 NVIDIA_ALLOWED_URL_SCHEMES = {"https"}
 AI_TIMEOUT_ERRORS = (TimeoutError, asyncio.TimeoutError)
 
@@ -76,6 +79,7 @@ class NvidiaNimProvider:
         self._base_url = _validated_https_base_url(base_url)
         self._model = model
         self._timeout_seconds = timeout_seconds
+        self._ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     async def chat(self, *, model: str, messages: list[ChatMessage]) -> str:
         del model
@@ -107,6 +111,7 @@ class NvidiaNimProvider:
             with urllib.request.urlopen(  # nosec B310
                 request,
                 timeout=self._timeout_seconds,
+                context=self._ssl_context,
             ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -409,7 +414,12 @@ def _select_provider(
     queue_wait_seconds: float,
 ) -> OllamaProvider | NvidiaNimProvider:
     settings = get_settings()
-    primary_provider = settings.llm_primary_provider or profile_provider
+    configured_primary_provider = settings.llm_primary_provider.lower()
+    primary_provider = (
+        profile_provider
+        if configured_primary_provider in PROFILE_PRIMARY_PROVIDER_VALUES
+        else configured_primary_provider
+    )
     fallback_provider = _fallback_provider_name()
     if (
         fallback_provider

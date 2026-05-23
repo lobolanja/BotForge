@@ -57,8 +57,8 @@ def test_load_nutrition_bot_profile_successfully() -> None:
     assert profile.bot_profile_id == "nutrition"
     assert profile.bot_display_name == "Bot Nutricionista"
     assert profile.default_language == "es"
-    assert profile.llm_provider == "ollama"
-    assert profile.llm_model == "gemma3:4b"
+    assert profile.llm_provider == "nvidia"
+    assert profile.llm_model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     assert profile.memory_enabled is True
     assert "no finjas que lo hay" in profile.system_prompt
     assert "No diagnostiques" in profile.system_prompt

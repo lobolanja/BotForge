@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import ssl
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -37,12 +39,12 @@ def fake_profile() -> BotProfile:
 def fake_settings(**overrides: object) -> SimpleNamespace:
     values: dict[str, object] = {
         "ollama_host": "http://ollama:11434",
-        "llm_primary_provider": "ollama",
+        "llm_primary_provider": "profile",
         "llm_fallback_provider": "nvidia",
         "llm_fallback_queue_wait_seconds": 100,
         "nvidia_api_key": "",
         "nvidia_base_url": "https://integrate.api.nvidia.com/v1",
-        "nvidia_model": "nvidia/test-model",
+        "nvidia_model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
         "bot_profile": "default_dev",
         "bot_profiles_dir": "bot_profiles",
         "ai_timeout_seconds": 1,
@@ -76,6 +78,17 @@ def test_nvidia_provider_normalizes_https_base_url() -> None:
     )
 
     assert provider._base_url == "https://example.test/v1"
+
+
+def test_nvidia_provider_uses_certifi_ssl_context() -> None:
+    provider = engine.NvidiaNimProvider(
+        api_key="secret-key",
+        base_url="https://example.test/v1/",
+        model="nvidia/test-model",
+        timeout_seconds=1,
+    )
+
+    assert isinstance(provider._ssl_context, ssl.SSLContext)
 
 
 @pytest.mark.asyncio
@@ -249,6 +262,78 @@ async def test_queue_wait_under_threshold_uses_primary_provider(
     monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider(name))
 
     result = await engine.answer("Ada", "hello", queue_wait_seconds=99)
+
+    assert result == "ollama answer"
+    assert used_providers == ["ollama"]
+
+
+@pytest.mark.asyncio
+async def test_profile_primary_provider_uses_profile_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    used_providers: list[str] = []
+
+    class FakeProvider:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            used_providers.append(self.name)
+            return f"{self.name} answer"
+
+    nvidia_profile = replace(
+        fake_profile(),
+        llm_provider="nvidia",
+        llm_model="nvidia/test-model",
+    )
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nvidia_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider(name))
+
+    result = await engine.answer("Ada", "hello")
+
+    assert result == "nvidia answer"
+    assert used_providers == ["nvidia"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_primary_provider_overrides_profile_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    used_providers: list[str] = []
+
+    class FakeProvider:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            used_providers.append(self.name)
+            return f"{self.name} answer"
+
+    nvidia_profile = replace(
+        fake_profile(),
+        llm_provider="nvidia",
+        llm_model="nvidia/test-model",
+    )
+
+    monkeypatch.setattr(
+        engine,
+        "get_settings",
+        lambda: fake_settings(llm_primary_provider="ollama"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nvidia_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider(name))
+
+    result = await engine.answer("Ada", "hello")
 
     assert result == "ollama answer"
     assert used_providers == ["ollama"]
