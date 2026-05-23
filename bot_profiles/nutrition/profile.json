@@ -6,6 +6,7 @@
   "context_files": [
     "demo_plan.json"
   ],
+  "nutrition_plan_file": "demo_plan.json",
   "domain_rules": [
     "Responde en espanol por defecto con tono claro, directo y practico.",
     "Ayuda a interpretar y aplicar el plan nutricional del usuario; no inventes dietas completas desde cero.",

@@ -821,6 +821,13 @@ Tests (CI: `tests.yml`):
 python -m pytest
 ```
 
+Opt-in live tests can validate NVIDIA connectivity and model behavior with the
+real API. They are skipped by default to avoid consuming provider quota:
+
+```bash
+RUN_LIVE_NVIDIA_TESTS=1 python -m pytest tests/test_nutrition_live_nvidia.py
+```
+
 ## Current Limitations
 
 - Conversation memory is bounded to the latest configured raw messages plus a
