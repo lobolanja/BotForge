@@ -156,9 +156,10 @@ Flow:
 2. Bot detects recommendation intent.
 3. Bot detects or asks for day situation when `situaciones` is available.
 4. Bot detects or asks for the meal moment.
-5. Bot resolves `situacion + momento` to a `comida_*` key.
-6. Bot chooses compatible options from that comida.
-7. Bot replies briefly with the meal structure.
+5. Bot resolves `situacion + momento` to a `comida_*` key locally.
+6. Bot loads only that comida chunk.
+7. Bot asks the LLM to format a practical answer from that chunk.
+8. Bot replies briefly with the meal structure.
 
 Expected response:
 
@@ -175,8 +176,12 @@ Edge cases:
 - Missing day situation: ask using the configured options for that user's plan,
   such as cycling, athletics, football, strength, rest, or any other defined
   activity.
+- Multiple day situations detected: ask the user which one should drive the
+  plan for this meal.
 - No active plan: suggest `/new_plan`.
 - Missing mapping: do not invent a comida.
+- Complete mapping: do not send the full plan to the LLM; send only the
+  resolved chunk.
 
 ## Journey 6: Adapt A Concrete Food Or Dish
 

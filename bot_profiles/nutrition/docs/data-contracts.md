@@ -96,6 +96,110 @@ Rules:
 
 This shape is intentionally cheaper in tokens than object-per-food structures.
 
+## Situations Router Document
+
+`situaciones` is the operational router between natural day context and meal
+blocks. It does not contain food quantities. It only answers:
+
+```text
+tipo de dia + momento -> comida_key
+```
+
+Current compact shape:
+
+```json
+{
+  "situaciones": {
+    "crossfit": {
+      "label": "CrossFit o entrenamiento de fuerza alta intensidad",
+      "aliases": ["crossfit", "fuerza", "gym", "gimnasio", "hiit"],
+      "tipo_dia": "entrenamiento_fuerza_por_la_tarde",
+      "suplementacion": ["10g de creatina monohidrato creapure"],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- Top-level `situaciones` is required when day routing is enabled.
+- Each situation key is stable and internal, for example `crossfit`,
+  `futbol`, `ciclismo`, `atletismo`, or `no_entreno`.
+- `aliases` is part of the practical contract. It lets the local router map
+  natural language such as `bici`, `gym`, `partido`, or `correr` to stable
+  situation keys without a model call.
+- `momentos` maps natural meal moments to existing `comidas` keys.
+- Every `momentos.*` value must reference an existing key in `comidas`.
+- `suplementacion` must be an array of strings. Preserve it, but do not mention
+  it in every meal response unless the user asks about supplements or daily
+  planning.
+- Situation names are configurable. The code must not hardcode only crossfit,
+  football, or rest days.
+
+Moment aliases can be handled by runtime rules before lookup:
+
+```text
+desayuno, desayunar -> desayuno
+comida, almuerzo, mediodia, medio dia -> almuerzo
+merienda, media tarde, pre entreno -> merienda
+cena, cenar, noche -> cena
+```
+
+If a plan adds a custom moment, for example `post_entreno`, the router can
+support it later through plan-provided aliases.
+
+## Runtime Chunking Contract
+
+The full plan should not be sent to the LLM when the runtime can resolve a
+smaller slice locally.
+
+Preferred V1 flow:
+
+```text
+mensaje del usuario
+-> normalizar texto
+-> detectar situation_key desde situaciones.*.aliases
+-> detectar moment_key desde reglas/aliases de momentos
+-> resolver situaciones[situation_key].momentos[moment_key]
+-> obtener comidas[comida_key]
+-> llamar al LLM solo con ese chunk
+```
+
+Chunk sent to the LLM when resolution is complete:
+
+```json
+{
+  "nutrition_context": {
+    "situation_key": "crossfit",
+    "moment_key": "almuerzo",
+    "meal_block_key": "comida_2",
+    "supplementation": ["10g de creatina monohidrato creapure"],
+    "meal_block": {
+      "descripcion": "Elige y combina. E.F",
+      "and": []
+    }
+  }
+}
+```
+
+Rules:
+
+- The chunk is read-only context.
+- The LLM may explain and format the block, but must not invent quantities.
+- If `situation_key` or `moment_key` is missing, ask one short clarification
+  instead of sending the full plan.
+- If multiple situations match with similar confidence, ask the user to choose.
+- If the resolved `meal_block_key` is missing from `comidas`, treat it as
+  configuration error.
+- The full `comidas` document may be used for validation or local lookup, not
+  as routine prompt payload.
+
 ## Node Contract
 
 Nodes represent a recursive logical tree. Nutrition plans often nest choices,

@@ -57,6 +57,17 @@ Example capabilities this design must support:
 
 In all cases, `comidas` remains the source of truth for quantities.
 
+Runtime principle:
+
+```text
+detect situation + detect moment -> resolve comida -> send only that chunk
+```
+
+The bot should not send the full plan to the LLM when it can select the
+relevant block locally. `situaciones.*.aliases` exists so natural language such
+as "bici", "gym", "partido", or "correr" can be mapped to configured situations
+before the model is called.
+
 ## Document Map
 
 - [User journeys](user-journeys.md): complete user flows and expected outcomes.
@@ -95,3 +106,8 @@ Out of V1:
 - daily tracking;
 - advanced plan comparison;
 - batch cooking workflows.
+
+The demo-plan phase before full persistence uses the same data shape but starts
+simpler: a repository demo plan can be loaded as read-only profile context, and
+issue #94 adds a local router so only the resolved comida chunk reaches the
+LLM.

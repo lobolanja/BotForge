@@ -96,6 +96,25 @@ Related issue: #86.
 
 ## MVP 2: Active Plan Usage
 
+### Story 2.0: Route Natural Language To A Plan Chunk
+
+As a user, I want to describe my day naturally, so that the bot can select the
+right comida without sending the full plan to the LLM.
+
+Acceptance criteria:
+
+- The bot detects situation keys from configured `situaciones.*.aliases`.
+- The bot detects common meal moments such as desayuno, almuerzo, merienda, and
+  cena.
+- The bot resolves `situacion + momento` to a `comida_*` key before the LLM
+  call.
+- If either value is missing, the bot asks one concise clarification.
+- If multiple situations match, the bot asks the user to choose.
+- When resolution succeeds, the LLM receives only the resolved comida chunk and
+  not the full plan.
+
+Related issue: #94.
+
 ### Story 2.1: Activate A Draft Plan
 
 As a user, I want to activate a draft plan, so that the bot uses it as the
@@ -120,9 +139,11 @@ Acceptance criteria:
 - Without an active plan, the bot suggests `/new_plan`.
 - With an active plan, the bot uses `meal_blocks`.
 - The bot asks for meal moment when needed.
+- When `situaciones` are available, the bot routes to the relevant comida chunk
+  before calling the LLM.
 - Responses do not expose technical JSON details unless requested.
 
-Related issue: #88.
+Related issues: #88, #94.
 
 ### Story 2.3: Adapt A Concrete Food
 
@@ -148,10 +169,12 @@ Acceptance criteria:
 
 - The bot maps user activity words to configured `situaciones` keys.
 - The bot resolves `situacion + momento` to a `comida_*` key.
+- The bot uses `aliases` from the plan instead of hardcoding only one set of
+  sports.
 - If the activity or moment is ambiguous, the bot asks using configured options.
 - The bot answers with quantities from the resolved comida.
 
-Related issues: #88, #91.
+Related issues: #88, #91, #94.
 
 ## MVP 3: Daily Tracking
 

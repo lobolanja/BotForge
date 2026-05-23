@@ -47,6 +47,7 @@ Goal: use the active plan to answer practical meal questions.
 
 Issues:
 
+- #94: Local situations router and plan chunk selection.
 - #87: Activate nutrition plan.
 - #88: First responses with active plan.
 - #89: Basic adaptation of concrete foods.
@@ -59,7 +60,33 @@ Definition of done:
 - With active plan, bot answers from the relevant `meal_blocks` slice.
 - If the user provides today's activity, the bot resolves it through
   `situaciones` when available.
+- The runtime should detect situation and meal moment locally when possible,
+  then send only the resolved meal block to the LLM.
+- If situation or moment is missing, bot asks one concise clarification instead
+  of sending the full plan.
 - Bot does not invent quantities or foods.
+
+## MVP 2A: Demo Plan Router Before Persistence
+
+Goal: get useful responses from the repository demo plan before full user plan
+persistence is implemented.
+
+Issue:
+
+- #94: Local situations router and plan chunk selection.
+
+Definition of done:
+
+- The nutrition profile can load the repository demo plan.
+- The router detects day situations from `situaciones.*.aliases`.
+- The router detects common meal moments from natural language.
+- Complete queries such as `Hoy tengo crossfit, que como al mediodia?` resolve
+  to one comida block before the LLM call.
+- Ambiguous or incomplete queries ask for the missing context.
+- The prompt receives only the resolved block, not the full demo plan.
+
+This is a temporary but useful step. Later persistence should reuse the same
+router contract against each user's active plan.
 
 ## MVP 3: Daily Tracking
 
