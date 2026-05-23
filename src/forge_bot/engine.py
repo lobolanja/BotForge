@@ -1,11 +1,14 @@
 import asyncio
+import html
 import json
 import logging
+import re
 import ssl
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -14,6 +17,8 @@ import ollama
 
 from .bot_profile import BotProfile, load_active_bot_profile
 from .config import get_settings
+from .nutrition.plan import NutritionPlan, NutritionPlanError, load_nutrition_plan_file
+from .nutrition.router import MealResolution, resolve_meal_context
 from .prompting import ChatMessage, assemble_prompt_messages
 
 logger = logging.getLogger(__name__)
@@ -155,13 +160,26 @@ async def answer(
     """
     settings = get_settings()
     active_profile = _resolve_profile(profile)
-    messages = assemble_prompt_messages(
+    prompt_profile, runtime_instructions, direct_answer = _prepare_profile_prompt(
         active_profile,
+        msg,
+        recent_conversation_messages or [],
+    )
+    if direct_answer is not None:
+        return direct_answer
+    include_memory = not (
+        active_profile.bot_profile_id == "nutrition" and runtime_instructions
+    )
+
+    messages = assemble_prompt_messages(
+        prompt_profile,
         current_user_message=msg,
         user_display_name=user,
-        compacted_user_memory=compacted_user_memory,
-        recent_conversation_messages=recent_conversation_messages or [],
-        runtime_safety_instructions=[],
+        compacted_user_memory=compacted_user_memory if include_memory else None,
+        recent_conversation_messages=(
+            recent_conversation_messages or [] if include_memory else []
+        ),
+        runtime_safety_instructions=runtime_instructions,
     )
     request_id_text = request_id or "unknown"
     fallback_reason = _fallback_reason(
@@ -342,6 +360,180 @@ def load_default_profile() -> BotProfile:
     """Load the configured bot profile for a runtime AI request."""
     settings = get_settings()
     return load_active_bot_profile(settings.bot_profile, settings.bot_profiles_dir)
+
+
+def _prepare_profile_prompt(
+    profile: BotProfile,
+    message: str,
+    recent_conversation_messages: Sequence[ChatMessage] | None = None,
+) -> tuple[BotProfile, list[str], str | None]:
+    if profile.bot_profile_id != "nutrition" or profile.nutrition_plan_path is None:
+        return profile, [], None
+
+    prompt_profile = replace(profile, context_documents=())
+    if not _looks_like_nutrition_routing_query(message):
+        return prompt_profile, [], None
+
+    try:
+        plan = load_nutrition_plan_file(profile.nutrition_plan_path)
+    except NutritionPlanError:
+        logger.exception(
+            "nutrition_plan_load_failed profile=%s",
+            profile.bot_profile_id,
+        )
+        return (
+            prompt_profile,
+            [],
+            "No puedo leer el plan nutricional configurado ahora mismo.",
+        )
+
+    resolution = _resolve_nutrition_context_with_follow_up(
+        plan,
+        message,
+        recent_conversation_messages or [],
+    )
+    if not resolution.is_resolved:
+        return prompt_profile, [], _nutrition_clarification(resolution)
+
+    context = _nutrition_context_payload(resolution)
+    return (
+        prompt_profile,
+        [
+            (
+                "Resolved nutrition plan context. Use only these resolved "
+                "chunk(s) as the "
+                "active nutrition plan context for the current answer. Do not "
+                "invent foods or quantities outside this JSON. Do not expose raw "
+                "JSON unless the user explicitly asks.\n\n"
+                "Formato obligatorio para Telegram:\n"
+                "- Maximo 5 lineas cortas.\n"
+                "- Sin introducciones tipo 'basandome en el plan'.\n"
+                "- No listes todas las opciones del bloque.\n"
+                "- Recomienda una opcion concreta con cantidades.\n"
+                "- Usa **negrita** solo para una etiqueta corta si ayuda.\n"
+                "- Si el usuario habla de compensar, no dupliques cantidades: "
+                "mantente en el bloque y da un ajuste prudente.\n"
+                f"{json.dumps(context, ensure_ascii=False)}"
+            )
+        ],
+        None,
+    )
+
+
+def _resolve_nutrition_context_with_follow_up(
+    plan: NutritionPlan,
+    message: str,
+    recent_conversation_messages: Sequence[ChatMessage],
+) -> MealResolution:
+    resolution = resolve_meal_context(plan, message)
+    if resolution.is_resolved or resolution.status not in {
+        "missing_situation",
+        "missing_moment",
+    }:
+        return resolution
+
+    recent_user_messages = [
+        item["content"].strip()
+        for item in recent_conversation_messages
+        if item["role"] == "user" and item["content"].strip()
+    ]
+    for previous_message in reversed(recent_user_messages[-4:]):
+        combined_resolution = resolve_meal_context(
+            plan,
+            f"{previous_message}\n{message}",
+        )
+        if combined_resolution.is_resolved:
+            return combined_resolution
+    return resolution
+
+
+def _looks_like_nutrition_routing_query(message: str) -> bool:
+    normalized = message.lower()
+    keywords = (
+        "que como",
+        "qué como",
+        "que comer",
+        "qué comer",
+        "que puedo comer",
+        "qué puedo comer",
+        "todo lo que puedo comer",
+        "todo el dia",
+        "todo el día",
+        "dia completo",
+        "día completo",
+        "plan del dia",
+        "plan del día",
+        "comidas del dia",
+        "comidas del día",
+        "desayuno",
+        "almuerzo",
+        "comida",
+        "mediodia",
+        "merienda",
+        "cena",
+        "ceno",
+        "crossfit",
+        "futbol",
+        "fútbol",
+        "bici",
+        "ciclismo",
+        "correr",
+        "running",
+        "descanso",
+        "no entreno",
+    )
+    return any(keyword in normalized for keyword in keywords)
+
+
+def _nutrition_clarification(resolution: MealResolution) -> str:
+    if resolution.status == "missing_situation":
+        options = _join_options(resolution.available_situations)
+        return f"Para ajustarlo al plan, dime que tipo de dia es: {options}."
+    if resolution.status == "missing_moment":
+        options = _join_options(resolution.available_moments)
+        return f"Te lo ajusto, pero dime el momento: {options}."
+    if resolution.status == "ambiguous_situation":
+        options = _join_options(match.label for match in resolution.situation_matches)
+        return f"Te he entendido varios contextos posibles: {options}. Cual usamos?"
+    if resolution.status == "ambiguous_moment":
+        options = _join_options(match.key for match in resolution.moment_matches)
+        return f"Te he entendido varios momentos posibles: {options}. Cual usamos?"
+    return "No tengo configurado que bloque usar para ese contexto del plan."
+
+
+def _join_options(options: Iterable[str]) -> str:
+    cleaned = [option for option in options if option]
+    if not cleaned:
+        return "desayuno, almuerzo, merienda o cena"
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return ", ".join(cleaned[:-1]) + " o " + cleaned[-1]
+
+
+def _nutrition_context_payload(resolution: MealResolution) -> dict[str, Any]:
+    if resolution.status == "resolved_day":
+        return {
+            "mode": "full_day",
+            "situation_key": resolution.situation_key,
+            "supplementation": list(resolution.supplementation),
+            "meal_blocks": [
+                {
+                    "moment_key": day_meal.moment_key,
+                    "moment_label": day_meal.moment_label,
+                    "meal_block_key": day_meal.meal_block_key,
+                    "meal_block": day_meal.meal_block,
+                }
+                for day_meal in resolution.day_meal_blocks
+            ],
+        }
+    return {
+        "mode": "single_meal",
+        "situation_key": resolution.situation_key,
+        "moment_key": resolution.moment_key,
+        "meal_block_key": resolution.meal_block_key,
+        "supplementation": list(resolution.supplementation),
+        "meal_block": resolution.meal_block,
+    }
 
 
 def _memory_summary_prompt(
@@ -557,17 +749,35 @@ def _trim_response(
     model: str,
     max_chars: int,
 ) -> str:
-    if len(content) <= max_chars:
-        return content
+    cleaned = _telegram_plain_text(content)
+    if len(cleaned) <= max_chars:
+        return cleaned
 
     logger.info(
         "llm_response_truncated provider=%s model=%s original_chars=%s max_chars=%s",
         provider,
         model,
-        len(content),
+        len(cleaned),
         max_chars,
     )
-    return content[:max_chars].rstrip()
+    return cleaned[:max_chars].rstrip()
+
+
+def _telegram_plain_text(content: str) -> str:
+    """Normalize LLM output for Telegram HTML parse mode."""
+    text = html.escape(content.strip())
+    text = re.sub(r"```(?:\w+)?\n?", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    text = re.sub(r"(?m)^\s*[\*\+]\s+", "- ", text)
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__([^_\n]+)__", r"<b>\1</b>", text)
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)
+    text = text.replace("*", "")
+    text = re.sub(r"(?m)^\s*-{3,}\s*$", "", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _logged_model(profile_model: str, provider: str) -> str:

@@ -148,26 +148,36 @@ Edge cases:
 
 Actor: authenticated Telegram user with an active plan.
 
-Goal: get a practical meal recommendation from the plan.
+Goal: get one practical meal recommendation from the user's active plan.
+
+This is the most basic successful use case for the bot after the user already
+has a nutrition plan loaded. The user should not need to understand `comidas`,
+macros, `situaciones`, or internal block keys.
 
 Flow:
 
-1. User asks "Que ceno?" or "Que como hoy?".
+1. User asks "Que ceno?", "Que como hoy dia de no entreno?", or "Hoy tengo
+   crossfit, que como al mediodia?".
 2. Bot detects recommendation intent.
 3. Bot detects or asks for day situation when `situaciones` is available.
 4. Bot detects or asks for the meal moment.
 5. Bot resolves `situacion + momento` to a `comida_*` key locally.
 6. Bot loads only that comida chunk.
-7. Bot asks the LLM to format a practical answer from that chunk.
-8. Bot replies briefly with the meal structure.
+7. Bot selects one valid option path through the block:
+   - for `and`, include each required group;
+   - for `or`, choose one reasonable option;
+   - preserve explicit conditions such as removing oil for fatty fish.
+8. Bot answers as a normal meal recommendation with quantities from the plan.
+9. Bot does not show macros unless the user asks for macros, calories, or
+   detailed targets.
 
 Expected response:
 
 ```text
 Cena:
-Pescado blanco con ensalada.
+330g de merluza con ensalada.
 
-Usa la grasa del bloque si corresponde.
+Añade 20g de aceite de oliva o cambia esa grasa por 160g de aguacate.
 ```
 
 Edge cases:
@@ -182,6 +192,12 @@ Edge cases:
 - Missing mapping: do not invent a comida.
 - Complete mapping: do not send the full plan to the LLM; send only the
   resolved chunk.
+- If the user asks "quiero otra opcion", choose a different valid option path
+  from the same resolved block when possible.
+- If the user asks "por que?", explain the selected groups and conditions
+  without exposing raw JSON.
+- If no reasonable concrete option can be selected automatically, show two or
+  three valid choices from the block and ask which one prefers.
 
 ## Journey 6: Adapt A Concrete Food Or Dish
 

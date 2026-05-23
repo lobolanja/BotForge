@@ -7,6 +7,72 @@
     "No mostrar macros salvo que el usuario los pida.",
     "Si falta tipo de dia o momento, preguntar una aclaracion breve."
   ],
+  "momentos": {
+    "desayuno": {
+      "label": "Desayuno",
+      "aliases": [
+        "desayuno",
+        "desayunar",
+        "primera comida"
+      ]
+    },
+    "media_manana": {
+      "label": "Media mañana",
+      "aliases": [
+        "media mañana",
+        "media manana",
+        "tentempie de mañana",
+        "tentempie de manana",
+        "snack de mañana",
+        "snack de manana"
+      ]
+    },
+    "almuerzo": {
+      "label": "Almuerzo",
+      "aliases": [
+        "almuerzo",
+        "comida",
+        "comer",
+        "mediodia",
+        "medio dia"
+      ]
+    },
+    "pre_entreno": {
+      "label": "Pre entreno",
+      "aliases": [
+        "pre entreno",
+        "preentreno",
+        "antes de entrenar",
+        "antes del entreno"
+      ]
+    },
+    "post_entreno": {
+      "label": "Post entreno",
+      "aliases": [
+        "post entreno",
+        "postentreno",
+        "despues de entrenar",
+        "despues del entreno"
+      ]
+    },
+    "merienda": {
+      "label": "Merienda",
+      "aliases": [
+        "merienda",
+        "merendar",
+        "media tarde"
+      ]
+    },
+    "cena": {
+      "label": "Cena",
+      "aliases": [
+        "cena",
+        "cenar",
+        "ceno",
+        "noche"
+      ]
+    }
+  },
   "situaciones": {
     "crossfit": {
       "label": "CrossFit o entrenamiento de fuerza alta intensidad",

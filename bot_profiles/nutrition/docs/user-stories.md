@@ -141,6 +141,15 @@ Acceptance criteria:
 - The bot asks for meal moment when needed.
 - When `situaciones` are available, the bot routes to the relevant comida chunk
   before calling the LLM.
+- The answer recommends one valid option path from the resolved block rather
+  than dumping all possible options.
+- The recommended option follows local `and`/`or` semantics: include all
+  required `and` groups and choose one child from each relevant `or` group.
+- The answer includes quantities from the selected block.
+- Explicit block conditions are applied or shown when they affect the selected
+  option.
+- Macros are hidden by default even when the plan contains macro codes.
+- The user can ask for another option from the same block.
 - Responses do not expose technical JSON details unless requested.
 
 Related issues: #88, #94.

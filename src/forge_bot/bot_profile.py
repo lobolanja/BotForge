@@ -42,6 +42,7 @@ class BotProfile:
     memory_enabled: bool
     analytics_enabled: bool
     context_documents: tuple[BotProfileContextDocument, ...] = ()
+    nutrition_plan_path: Path | None = None
 
 
 def load_active_bot_profile(
@@ -107,6 +108,11 @@ def load_bot_profile(
         memory_enabled=_required_bool(data, "memory_enabled"),
         analytics_enabled=_required_bool(data, "analytics_enabled"),
         context_documents=_load_context_documents(data, profile_root),
+        nutrition_plan_path=_optional_profile_file(
+            data,
+            profile_root,
+            "nutrition_plan_file",
+        ),
     )
 
 
@@ -251,5 +257,24 @@ def _resolve_profile_file(profile_root: Path, relative_path: str) -> Path:
     ):
         raise BotProfileError(
             "Bot profile context files must stay inside the profile folder."
+        )
+    return resolved
+
+
+def _optional_profile_file(
+    data: Mapping[str, Any],
+    profile_root: Path,
+    field: str,
+) -> Path | None:
+    value = data.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise BotProfileError(f"Bot profile field '{field}' must be a string.")
+
+    resolved = _resolve_profile_file(profile_root, value.strip())
+    if not resolved.is_file():
+        raise BotProfileError(
+            f"Bot profile file configured by '{field}' was not found at {resolved}."
         )
     return resolved

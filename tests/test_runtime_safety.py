@@ -2,13 +2,14 @@ import asyncio
 import logging
 import ssl
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
 from forge_bot import engine
-from forge_bot.bot_profile import BotProfile
+from forge_bot.bot_profile import BotProfile, BotProfileContextDocument
 from forge_bot.commands import auth_guard
 
 
@@ -151,6 +152,61 @@ async def test_ai_response_is_truncated(monkeypatch: pytest.MonkeyPatch) -> None
     result = await engine.answer("Ada", "hello")
 
     assert result == "abc"
+
+
+@pytest.mark.asyncio
+async def test_ai_response_is_normalized_for_telegram_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def successful_to_thread(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(
+            message=SimpleNamespace(
+                content="### **Cena**\n* 330g de merluza\n* `20g aceite`"
+            )
+        )
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr("forge_bot.engine.ollama.Client", fake_ollama_client)
+    monkeypatch.setattr("forge_bot.engine.asyncio.to_thread", successful_to_thread)
+
+    result = await engine.answer("Ada", "hello")
+
+    assert result == "<b>Cena</b>\n- 330g de merluza\n- 20g aceite"
+
+
+@pytest.mark.asyncio
+async def test_memory_query_sends_recent_conversation_to_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "ollama"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "Lo ultimo que me preguntaste fue que cenar dia de no entreno."
+
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(engine, "load_active_bot_profile", lambda *args: fake_profile())
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "Que ha sido lo ultimo que te he preguntado?",
+        recent_conversation_messages=[
+            {"role": "user", "content": "Que ceno hoy dia de no entreno?"},
+            {"role": "assistant", "content": "Cena de no entreno..."},
+        ],
+    )
+
+    assert result == "Lo ultimo que me preguntaste fue que cenar dia de no entreno."
+    system_message = captured_messages[0][0]["content"]
+    assert "Available conversation context" in system_message
+    assert "Do not say you have no memory" in system_message
+    assert "user: Que ceno hoy dia de no entreno?" in system_message
 
 
 @pytest.mark.asyncio
@@ -337,6 +393,266 @@ async def test_explicit_primary_provider_overrides_profile_provider(
 
     assert result == "ollama answer"
     assert used_providers == ["ollama"]
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_sends_only_resolved_plan_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "nutrition answer"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        context_documents=(
+            BotProfileContextDocument(
+                name="demo_plan.json",
+                content='{"comida_5": "should not be sent"}',
+            ),
+        ),
+    )
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "Hoy tengo crossfit, que como al mediodia?",
+    )
+
+    assert result == "nutrition answer"
+    system_message = captured_messages[0][0]["content"]
+    assert "Resolved nutrition plan context" in system_message
+    assert '"meal_block_key": "comida_2"' in system_message
+    assert "Profile context documents:" not in system_message
+    assert "comida_5" not in system_message
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_sanitizes_resolved_answer_without_extra_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model, messages
+            return "### **Cena**\n* " + ("respuesta larga " * 200)
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "get_settings",
+        lambda: fake_settings(ai_max_response_chars=4000),
+    )
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer("Ada", "Hoy no entreno, que ceno?")
+
+    assert len(result) > 900
+    assert "*" not in result
+    assert "###" not in result
+    assert result.startswith("<b>Cena</b>\n- respuesta larga")
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_sends_resolved_full_day_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "full day nutrition answer"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        context_documents=(
+            BotProfileContextDocument(
+                name="demo_plan.json",
+                content='{"comida_5": "should not be sent"}',
+            ),
+        ),
+    )
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "Dame todo lo que puedo comer hoy dia de ciclismo",
+    )
+
+    assert result == "full day nutrition answer"
+    system_message = captured_messages[0][0]["content"]
+    assert '"mode": "full_day"' in system_message
+    assert '"situation_key": "ciclismo"' in system_message
+    assert '"moment_key": "desayuno"' in system_message
+    assert '"moment_key": "almuerzo"' in system_message
+    assert '"moment_key": "merienda"' in system_message
+    assert '"moment_key": "cena"' in system_message
+    assert '"meal_block_key": "comida_5"' not in system_message
+    assert "Profile context documents:" not in system_message
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_missing_moment_asks_without_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_called = False
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            nonlocal provider_called
+            del model, messages
+            provider_called = True
+            return "should not be used"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+    )
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer("Ada", "Hoy tengo crossfit")
+
+    assert "dime el momento" in result
+    assert not provider_called
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_resolves_follow_up_moment_from_recent_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "cena no entreno"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+    )
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "Cena",
+        recent_conversation_messages=[
+            {"role": "user", "content": "Que como hoy dia de no entreno?"},
+            {"role": "assistant", "content": "Te lo ajusto, pero dime el momento."},
+        ],
+    )
+
+    assert result == "cena no entreno"
+    system_message = captured_messages[0][0]["content"]
+    assert '"situation_key": "no_entreno"' in system_message
+    assert '"moment_key": "cena"' in system_message
+    assert '"meal_block_key": "comida_3"' in system_message
+    assert "Recent conversation:" not in system_message
+
+
+@pytest.mark.asyncio
+async def test_nutrition_profile_resolves_follow_up_situation_from_recent_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list[list[dict[str, str]]] = []
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            del model
+            captured_messages.append(messages)
+            return "cena no entreno"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+    )
+    monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "No entreno",
+        recent_conversation_messages=[
+            {"role": "user", "content": "Cena"},
+            {"role": "assistant", "content": "Dime que tipo de dia es."},
+        ],
+    )
+
+    assert result == "cena no entreno"
+    system_message = captured_messages[0][0]["content"]
+    assert '"situation_key": "no_entreno"' in system_message
+    assert '"moment_key": "cena"' in system_message
+    assert '"meal_block_key": "comida_3"' in system_message
+    assert "Recent conversation:" not in system_message
 
 
 @pytest.mark.asyncio

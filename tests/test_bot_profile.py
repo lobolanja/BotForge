@@ -64,10 +64,9 @@ def test_load_nutrition_bot_profile_successfully() -> None:
     assert profile.llm_provider == "nvidia"
     assert profile.llm_model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     assert profile.memory_enabled is True
-    assert len(profile.context_documents) == 1
-    assert profile.context_documents[0].name == "demo_plan.json"
-    assert '"situaciones"' in profile.context_documents[0].content
-    assert '"comidas"' in profile.context_documents[0].content
+    assert profile.context_documents == ()
+    assert profile.nutrition_plan_path is not None
+    assert profile.nutrition_plan_path.name == "demo_plan.json"
     assert "no finjas que lo hay" in profile.system_prompt
     assert "No diagnostiques" in profile.system_prompt
     assert any("no inventes dietas" in rule for rule in profile.domain_rules)
@@ -131,6 +130,17 @@ def test_fail_when_context_file_is_too_large(tmp_path: Path) -> None:
         )
 
 
+def test_fail_when_nutrition_plan_file_is_missing(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"nutrition_plan_file": "missing.json"})
+
+    with pytest.raises(BotProfileError, match="nutrition_plan_file"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
+
+
 def test_prompt_assembly_includes_system_prompt_before_user_message(
     tmp_path: Path,
 ) -> None:
@@ -155,12 +165,12 @@ def test_prompt_assembly_includes_system_prompt_before_user_message(
     assert messages[0]["role"] == "system"
     assert "You are a nutrition assistant." in messages[0]["content"]
     assert "Avoid medical diagnosis." in messages[0]["content"]
-    assert messages[1]["role"] == "system"
-    assert "User memory for this same authenticated user" in messages[1]["content"]
-    assert "Compacted memory:\nPrefers vegetarian meals." in messages[1]["content"]
+    assert "Available conversation context" in messages[0]["content"]
+    assert "Do not say you have no memory" in messages[0]["content"]
+    assert "Compacted memory:\nPrefers vegetarian meals." in messages[0]["content"]
     assert (
         "Recent conversation:\nassistant: How can I help today?"
-        in messages[1]["content"]
+        in messages[0]["content"]
     )
     assert messages[-1] == {
         "role": "user",
@@ -186,12 +196,11 @@ def test_nutrition_profile_prompt_assembly_includes_guardrails() -> None:
     assert "Disclaimer: Este bot ayuda a interpretar un plan nutricional" in (
         system_message
     )
-    assert "Profile context documents:" in system_message
-    assert "Document: demo_plan.json" in system_message
-    assert '"crossfit"' in system_message
-    assert '"comida_2"' in system_message
-    assert messages[1]["role"] == "system"
-    assert "El usuario prefiere cenas sencillas." in messages[1]["content"]
+    assert "Profile context documents:" not in system_message
+    assert "Document: demo_plan.json" not in system_message
+    assert '"crossfit"' not in system_message
+    assert '"comida_2"' not in system_message
+    assert "El usuario prefiere cenas sencillas." in messages[0]["content"]
 
 
 def test_changing_profile_changes_prompt_without_code_changes(tmp_path: Path) -> None:

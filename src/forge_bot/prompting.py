@@ -26,20 +26,20 @@ def assemble_prompt_messages(
     The order is intentionally explicit so later memory work can plug into the
     contract without changing Telegram routing or generic runtime code.
     """
-    messages: list[ChatMessage] = [
-        {
-            "role": "system",
-            "content": _system_content(profile, runtime_safety_instructions),
-        }
-    ]
-
     memory_content = _memory_content(
         compacted_user_memory=compacted_user_memory,
         recent_conversation_messages=recent_conversation_messages,
     )
-    if memory_content:
-        messages.append({"role": "system", "content": memory_content})
-
+    messages: list[ChatMessage] = [
+        {
+            "role": "system",
+            "content": _system_content(
+                profile,
+                runtime_safety_instructions,
+                memory_content=memory_content,
+            ),
+        }
+    ]
     messages.append({"role": "user", "content": current_user_message.strip()})
     return messages
 
@@ -66,16 +66,25 @@ def _memory_content(
         return None
 
     return (
-        "User memory for this same authenticated user and bot profile. "
-        "Use it as previous conversation context. If the user asks about their "
-        "name, preferences, priorities, dates, or earlier statements, answer "
-        "from this memory when it contains the information.\n\n" + "\n\n".join(sections)
+        "Available conversation context for this same authenticated user and "
+        "bot profile. This is the bot's memory for the current answer. Treat it "
+        "as authoritative conversation context supplied by the application.\n\n"
+        "Rules:\n"
+        "- If the user asks what they said, asked, or discussed before, answer "
+        "from the recent conversation below.\n"
+        "- Do not say you have no memory or no access to previous messages when "
+        "the relevant information appears below.\n"
+        "- If the answer is not present below, say that you do not have that "
+        "specific previous detail available.\n\n"
+        + "\n\n".join(sections)
     )
 
 
 def _system_content(
     profile: BotProfile,
     runtime_safety_instructions: Iterable[str] | None,
+    *,
+    memory_content: str | None = None,
 ) -> str:
     """Combine profile instructions and runtime safety rules."""
     sections = [
@@ -84,6 +93,9 @@ def _system_content(
         f"Default language: {profile.default_language}",
         f"Disclaimer: {profile.disclaimer_text}",
     ]
+    if memory_content:
+        sections.append(memory_content)
+
     if profile.context_documents:
         context_sections = [
             (

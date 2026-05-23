@@ -191,14 +191,13 @@ giving quantities, and avoids inventing diets, medical advice, macros, or JSON
 details unless the user explicitly asks.
 
 For local validation before user-level persistence exists, the nutrition profile
-also loads `bot_profiles/nutrition/demo_plan.json` as read-only profile context.
-That demo plan includes `situaciones` plus `comidas`, so the bot can answer
-questions such as "hoy tengo crossfit, que como al mediodia?" by resolving the
-day situation and meal moment to the matching food block.
+uses `bot_profiles/nutrition/demo_plan.json` through `nutrition_plan_file`. The
+runtime loads that plan locally, resolves `situacion + momento` to a matching
+`comida` block, and sends only the resolved chunk to the LLM.
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
-deterministic order: bot system prompt and rules first, optional memory, recent
-conversation messages, then the current user message.
+deterministic order: bot system prompt and rules first, optional memory/recent
+conversation context inside the system message, then the current user message.
 
 When memory is enabled globally and in the active bot profile, BotForge stores a
 bounded recent window per internal user and bot profile. The default window keeps

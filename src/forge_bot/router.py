@@ -175,7 +175,7 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
         # Send the generated answer back into the same chat.
-        await update.message.reply_text(answer)
+        await _reply_ai_answer(update.message, answer)
         mark_answered(update.update_id)
         if internal_user and memory_is_enabled:
             stored = _store_successful_turn(
@@ -312,6 +312,13 @@ async def _ignore_with_reply(update: Update, message: str) -> None:
         mark_ignored(update.update_id)
     if update.message:
         await update.message.reply_text(message)
+
+
+async def _reply_ai_answer(message: object, answer: str) -> None:
+    try:
+        await message.reply_text(answer, parse_mode="HTML")  # type: ignore[attr-defined]
+    except TypeError:
+        await message.reply_text(answer)  # type: ignore[attr-defined]
 
 
 async def _finish_ignored_request(

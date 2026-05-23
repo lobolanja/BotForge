@@ -21,23 +21,21 @@ NUTRITION_PROFILE_ROOT = Path("bot_profiles/nutrition")
 
 @pytest.fixture
 def demo_plan() -> NutritionPlan:
-    return load_nutrition_plan_file(NUTRITION_PROFILE_ROOT, "demo_plan.json")
+    return load_nutrition_plan_file(NUTRITION_PROFILE_ROOT / "demo_plan.json")
 
 
 def test_load_configured_nutrition_plan_file(demo_plan) -> None:
     assert demo_plan.plan_id == "demo_nutrition_plan_v1"
+    assert "media_manana" in demo_plan.moments
+    assert "pre_entreno" in demo_plan.moments
+    assert "post_entreno" in demo_plan.moments
     assert "crossfit" in demo_plan.situations
     assert "comida_2" in demo_plan.meals
 
 
 def test_configured_plan_loader_rejects_missing_file(tmp_path: Path) -> None:
     with pytest.raises(NutritionPlanError, match="could not be read"):
-        load_nutrition_plan_file(tmp_path, "missing.json")
-
-
-def test_configured_plan_loader_rejects_path_traversal(tmp_path: Path) -> None:
-    with pytest.raises(NutritionPlanError, match="inside the profile folder"):
-        load_nutrition_plan_file(tmp_path, "../outside.json")
+        load_nutrition_plan_file(tmp_path / "missing.json")
 
 
 def test_demo_plan_file_exists() -> None:
@@ -48,10 +46,33 @@ def test_plan_validation_rejects_missing_meal_reference() -> None:
     with pytest.raises(NutritionPlanError, match="references missing meal"):
         parse_nutrition_plan(
             {
+                "momentos": {
+                    "almuerzo": {"aliases": ["almuerzo"]},
+                },
                 "situaciones": {
                     "crossfit": {
                         "aliases": ["crossfit"],
                         "momentos": {"almuerzo": "comida_missing"},
+                    }
+                },
+                "comidas": {
+                    "comida_1": {"descripcion": "ok", "and": ["25g whey"]}
+                },
+            }
+        )
+
+
+def test_plan_validation_rejects_invalid_moment_aliases() -> None:
+    with pytest.raises(NutritionPlanError, match="aliases"):
+        parse_nutrition_plan(
+            {
+                "momentos": {
+                    "almuerzo": {"aliases": ["almuerzo", ""]},
+                },
+                "situaciones": {
+                    "crossfit": {
+                        "aliases": ["crossfit"],
+                        "momentos": {"almuerzo": "comida_1"},
                     }
                 },
                 "comidas": {
@@ -91,12 +112,29 @@ def test_detect_situations_from_aliases(demo_plan, message: str, expected: str) 
         ("que como al mediodia", "almuerzo"),
         ("que comida toca", "almuerzo"),
         ("que merienda hago", "merienda"),
-        ("pre entreno rapido", "merienda"),
+        ("pre entreno rapido", "pre_entreno"),
         ("que ceno por la noche", "cena"),
     ],
 )
-def test_detect_moments(message: str, expected: str) -> None:
-    matches = detect_moments(message)
+def test_detect_moments(demo_plan, message: str, expected: str) -> None:
+    matches = detect_moments(demo_plan, message)
+
+    assert tuple(match.key for match in matches) == (expected,)
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("que tomo a media mañana", "media_manana"),
+        ("despues del entreno que hago", "post_entreno"),
+    ],
+)
+def test_detect_plan_defined_moments(
+    demo_plan,
+    message: str,
+    expected: str,
+) -> None:
+    matches = detect_moments(demo_plan, message)
 
     assert tuple(match.key for match in matches) == (expected,)
 
@@ -121,6 +159,26 @@ def test_resolve_meal_context(demo_plan, message: str, meal_key: str) -> None:
     assert resolution.supplementation == ("10g de creatina monohidrato creapure",)
 
 
+def test_resolve_full_day_context_uses_only_canonical_plan_moments(demo_plan) -> None:
+    resolution = resolve_meal_context(
+        demo_plan,
+        "Dame todo lo que puedo comer hoy dia de ciclismo",
+    )
+
+    assert resolution.status == "resolved_day"
+    assert resolution.is_resolved
+    assert resolution.situation_key == "ciclismo"
+    assert tuple(
+        (day_meal.moment_key, day_meal.meal_block_key)
+        for day_meal in resolution.day_meal_blocks
+    ) == (
+        ("desayuno", "comida_1"),
+        ("almuerzo", "comida_2"),
+        ("merienda", "comida_0"),
+        ("cena", "comida_3"),
+    )
+
+
 def test_resolve_missing_situation(demo_plan) -> None:
     resolution = resolve_meal_context(demo_plan, "que como al mediodia?")
 
@@ -135,7 +193,23 @@ def test_resolve_missing_moment(demo_plan) -> None:
 
     assert resolution.status == "missing_moment"
     assert resolution.situation_key == "crossfit"
-    assert "almuerzo" in resolution.available_moments
+    assert resolution.available_moments == (
+        "Desayuno",
+        "Almuerzo",
+        "Merienda",
+        "Cena",
+    )
+
+
+def test_resolve_unmapped_plan_defined_moment(demo_plan) -> None:
+    resolution = resolve_meal_context(
+        demo_plan,
+        "hoy tengo crossfit, que tomo a media mañana?",
+    )
+
+    assert resolution.status == "invalid_mapping"
+    assert resolution.situation_key == "crossfit"
+    assert resolution.moment_key == "media_manana"
 
 
 def test_resolve_ambiguous_situation(demo_plan) -> None:

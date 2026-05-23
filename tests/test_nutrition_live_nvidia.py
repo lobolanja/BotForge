@@ -1,21 +1,17 @@
-import json
 import os
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
+from forge_bot.bot_profile import load_active_bot_profile
 from forge_bot.engine import NvidiaNimProvider
-from forge_bot.nutrition.plan import load_nutrition_plan_file
-from forge_bot.nutrition.router import resolve_meal_context
+from forge_bot.engine import answer as engine_answer
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_NVIDIA_TESTS") != "1",
     reason="live NVIDIA tests are opt-in; set RUN_LIVE_NVIDIA_TESTS=1",
 )
-
-NUTRITION_PROFILE_ROOT = Path("bot_profiles/nutrition")
-
 
 def _nvidia_provider() -> tuple[NvidiaNimProvider, str]:
     load_dotenv(Path(".env"))
@@ -59,44 +55,15 @@ async def test_live_nvidia_chat_smoke() -> None:
 
 
 @pytest.mark.asyncio
-async def test_live_nvidia_answers_from_resolved_nutrition_chunk() -> None:
-    provider, model = _nvidia_provider()
-    plan = load_nutrition_plan_file(NUTRITION_PROFILE_ROOT, "demo_plan.json")
-    resolution = resolve_meal_context(
-        plan,
-        "Hoy tengo crossfit, que como al mediodia?",
-    )
-    assert resolution.is_resolved
-    assert resolution.meal_block_key == "comida_2"
+async def test_live_nvidia_engine_answers_from_resolved_nutrition_chunk() -> None:
+    _nvidia_provider()
+    profile = load_active_bot_profile("nutrition", "bot_profiles")
 
-    context = {
-        "situation_key": resolution.situation_key,
-        "moment_key": resolution.moment_key,
-        "meal_block_key": resolution.meal_block_key,
-        "supplementation": resolution.supplementation,
-        "meal_block": resolution.meal_block,
-    }
-    answer = await provider.chat(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "/no_think\n"
-                    "Eres un bot nutricionista. Responde en espanol usando solo "
-                    "el bloque nutricional dado. No inventes cantidades. "
-                    "Devuelve una respuesta breve y practica."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Mensaje original: Hoy tengo crossfit, que como al mediodia?\n"
-                    "Contexto nutricional resuelto:\n"
-                    f"{json.dumps(context, ensure_ascii=False)}"
-                ),
-            },
-        ],
+    answer = await engine_answer(
+        "Juanca",
+        "Hoy tengo crossfit, que como al mediodia?",
+        profile=profile,
+        request_id="live-nutrition-router-test",
     )
 
     normalized = answer.lower()

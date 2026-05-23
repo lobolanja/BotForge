@@ -20,6 +20,26 @@ like a generic diet generator.
 
 ## Response Shape
 
+Most basic successful answer:
+
+```text
+Cena de no entreno:
+330g de merluza con ensalada.
+
+Añade 20g de aceite de oliva. Si prefieres aguacate, usa 160g.
+```
+
+Rules for this answer:
+
+- Say the detected context in human language when useful, for example `Cena de
+  no entreno`.
+- Recommend one concrete valid option, not the full block.
+- Include the plan quantities for the chosen foods.
+- Apply explicit conditions from the block, such as removing oil with fatty
+  fish or fatty meat.
+- Mention alternatives only when they are useful and short.
+- Do not show macros by default.
+
 Preferred short answer:
 
 ```text

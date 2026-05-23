@@ -109,6 +109,32 @@ Current compact shape:
 
 ```json
 {
+  "momentos": {
+    "desayuno": {
+      "label": "Desayuno",
+      "aliases": ["desayuno", "desayunar"]
+    },
+    "media_manana": {
+      "label": "Media mañana",
+      "aliases": ["media mañana", "media manana"]
+    },
+    "almuerzo": {
+      "label": "Almuerzo",
+      "aliases": ["almuerzo", "comida", "mediodia", "medio dia"]
+    },
+    "pre_entreno": {
+      "label": "Pre entreno",
+      "aliases": ["pre entreno", "antes de entrenar"]
+    },
+    "post_entreno": {
+      "label": "Post entreno",
+      "aliases": ["post entreno", "despues de entrenar"]
+    },
+    "cena": {
+      "label": "Cena",
+      "aliases": ["cena", "cenar", "ceno", "noche"]
+    }
+  },
   "situaciones": {
     "crossfit": {
       "label": "CrossFit o entrenamiento de fuerza alta intensidad",
@@ -134,25 +160,23 @@ Rules:
 - `aliases` is part of the practical contract. It lets the local router map
   natural language such as `bici`, `gym`, `partido`, or `correr` to stable
   situation keys without a model call.
-- `momentos` maps natural meal moments to existing `comidas` keys.
+- Root `momentos` defines the meal moments supported by that plan and their
+  natural-language aliases.
+- `situaciones.*.momentos` maps plan-specific meal moments to existing
+  `comidas` keys.
 - Every `momentos.*` value must reference an existing key in `comidas`.
 - `suplementacion` must be an array of strings. Preserve it, but do not mention
   it in every meal response unless the user asks about supplements or daily
   planning.
 - Situation names are configurable. The code must not hardcode only crossfit,
   football, or rest days.
-
-Moment aliases can be handled by runtime rules before lookup:
-
-```text
-desayuno, desayunar -> desayuno
-comida, almuerzo, mediodia, medio dia -> almuerzo
-merienda, media tarde, pre entreno -> merienda
-cena, cenar, noche -> cena
-```
-
-If a plan adds a custom moment, for example `post_entreno`, the router can
-support it later through plan-provided aliases.
+- Moment names are configurable. Some users may have `media_manana`,
+  `pre_entreno`, `post_entreno`, or no `merienda`; that must be plan data, not
+  hardcoded runtime behavior.
+- Training timing is also plan data. If morning and afternoon training change
+  the routing, model them as distinct situation keys such as
+  `crossfit_manana` and `crossfit_tarde`, with aliases that capture natural
+  language. If the user says only `crossfit`, ask which situation applies.
 
 ## Runtime Chunking Contract
 
@@ -165,7 +189,8 @@ Preferred V1 flow:
 mensaje del usuario
 -> normalizar texto
 -> detectar situation_key desde situaciones.*.aliases
--> detectar moment_key desde reglas/aliases de momentos
+-> detectar si el usuario pide un dia completo
+-> detectar moment_key desde momentos.*.aliases
 -> resolver situaciones[situation_key].momentos[moment_key]
 -> obtener comidas[comida_key]
 -> llamar al LLM solo con ese chunk
@@ -176,6 +201,7 @@ Chunk sent to the LLM when resolution is complete:
 ```json
 {
   "nutrition_context": {
+    "mode": "single_meal",
     "situation_key": "crossfit",
     "moment_key": "almuerzo",
     "meal_block_key": "comida_2",
@@ -188,12 +214,42 @@ Chunk sent to the LLM when resolution is complete:
 }
 ```
 
+Chunk sent to the LLM when the user asks for the whole day:
+
+```json
+{
+  "nutrition_context": {
+    "mode": "full_day",
+    "situation_key": "ciclismo",
+    "supplementation": ["10g de creatina monohidrato creapure"],
+    "meal_blocks": [
+      {
+        "moment_key": "desayuno",
+        "moment_label": "Desayuno",
+        "meal_block_key": "comida_1",
+        "meal_block": {}
+      },
+      {
+        "moment_key": "almuerzo",
+        "moment_label": "Almuerzo",
+        "meal_block_key": "comida_2",
+        "meal_block": {}
+      }
+    ]
+  }
+}
+```
+
 Rules:
 
 - The chunk is read-only context.
 - The LLM may explain and format the block, but must not invent quantities.
 - If `situation_key` or `moment_key` is missing, ask one short clarification
   instead of sending the full plan.
+- If the user clearly asks for the whole day, resolve all canonical moments
+  configured for that situation and send only those meal blocks. Do not include
+  alias-only moment keys such as `comida` or `mediodia` when they point to the
+  same canonical `almuerzo` block.
 - If multiple situations match with similar confidence, ask the user to choose.
 - If the resolved `meal_block_key` is missing from `comidas`, treat it as
   configuration error.
@@ -440,126 +496,22 @@ Avoid passing:
 - parsed food objects when raw strings are enough;
 - full extraction warnings for normal recommendations.
 
-## situaciones Document
+## Situations Document Notes
 
-`situaciones` is a compact routing document. It maps:
+The canonical `situaciones` shape is defined above in
+[Situations Router Document](#situations-router-document). Keep only one
+operational contract:
 
-```text
-day situation + meal moment -> comida key
-```
+- root `momentos` defines canonical meal moments and aliases;
+- root `situaciones` defines configurable day contexts and maps each moment to a
+  `comida_*` key;
+- activity keys and moment keys are plan data, not hardcoded sports or fixed
+  meals;
+- after routing, the bot reads quantities only from the selected `comidas`
+  block.
 
-It does not contain quantities, recipes, cooking instructions, calories, or
-adaptation rules. After resolving a comida key, the bot must read that comida
-from the compact `comidas` document.
-
-Current Spanish shape:
-
-```json
-{
-  "situaciones": {
-    "crossfit": {
-      "tipo_dia": "entrenamiento_fuerza_por_la_tarde",
-      "suplementacion": [
-        "10g de creatina monohidrato creapure"
-      ],
-      "momentos": {
-        "desayuno": "comida_1",
-        "almuerzo": "comida_2",
-        "merienda": "comida_0",
-        "cena": "comida_3"
-      }
-    },
-    "no_entreno": {
-      "tipo_dia": "no_entreno",
-      "suplementacion": [
-        "10g de creatina monohidrato creapure"
-      ],
-      "momentos": {
-        "desayuno": "comida_1",
-        "almuerzo": "comida_5",
-        "merienda": "comida_0",
-        "cena": "comida_3"
-      }
-    }
-  }
-}
-```
-
-Resolution examples:
-
-- `crossfit + almuerzo -> comida_2`
-- `futbol + cena -> comida_3`
-- `no_entreno + almuerzo -> comida_5`
-
-Resolution function:
-
-```python
-def resolve_comida_key(
-    situaciones_doc: dict,
-    situation_key: str,
-    moment_key: str,
-) -> str | None:
-    situations = situaciones_doc.get("situaciones", {})
-    situation = situations.get(situation_key)
-    if not situation:
-        return None
-    moments = situation.get("momentos", {})
-    return moments.get(moment_key)
-```
-
-Rules:
-
-- Root `situaciones` is required.
-- Each key under `situaciones` is an allowed day context configured for that
-  user or plan.
-- Activity keys are not limited to `crossfit`, `futbol`, or `no_entreno`.
-  They may include any real user context, such as `ciclismo`, `atletismo`,
-  `fuerza`, `natacion`, `senderismo`, `competicion`, `viaje`,
-  `descanso_activo`, or `no_entreno`.
-- `tipo_dia` is descriptive context. The operational key is the object key.
-- `momentos` is required for every situation.
-- Each `momentos` value must be a string reference to an existing comida key.
-- `suplementacion` must be an array of strings and may be empty.
-- Supplementation should be preserved, but not repeated in every meal answer.
-  Mention it only for daily planning or when the user asks about supplements.
-- Missing situation context should trigger a short clarification.
-- The clarification should use the configured situation keys for that user,
-  not a hardcoded list of sports.
-- Missing meal moment should trigger a short clarification or a low-confidence
-  time-based suggestion in a future version.
-- Missing moment mapping must not invent a comida.
-- A reference to a missing comida is a validation error.
-
-Validation rules:
-
-- `situaciones` must be an object.
-- Every situation must be an object.
-- `momentos` must be a non-empty object.
-- Every `momentos.*` value must be a string.
-- Every referenced comida key must exist in `comidas`.
-- `suplementacion`, when present, must be an array of strings.
-
-Generic future aliases may be supported later:
-
-```json
-{
-  "situations": {
-    "training_day": {
-      "label": "Training day",
-      "description": "Day with strength or high intensity training",
-      "supplementation": ["creatine"],
-      "moments": {
-        "breakfast": "meal_block_001",
-        "lunch": "meal_block_002"
-      }
-    }
-  }
-}
-```
-
-For the Spanish V1/V2 contract, prefer `situaciones`, `tipo_dia`,
-`suplementacion`, and `momentos` because that matches the current source data.
-Do not hardcode sports in the product logic; treat situation keys as plan data.
+Future persistence may split `situaciones` into a separate JSONB document, but
+the runtime contract stays the same.
 
 ## recetas Document
 

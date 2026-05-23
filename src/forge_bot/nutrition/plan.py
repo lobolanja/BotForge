@@ -16,6 +16,7 @@ class NutritionPlan:
     """Validated nutrition plan shape used by the local router."""
 
     plan_id: str
+    moments: Mapping[str, Mapping[str, Any]]
     situations: Mapping[str, Mapping[str, Any]]
     meals: Mapping[str, Mapping[str, Any]]
 
@@ -32,15 +33,20 @@ def parse_nutrition_plan(data: Mapping[str, Any]) -> NutritionPlan:
 
     situations = data.get("situaciones")
     meals = data.get("comidas")
+    moments = data.get("momentos", {})
+    if moments is not None and not isinstance(moments, dict):
+        raise NutritionPlanError("Nutrition plan field 'momentos' must be an object.")
     if not isinstance(situations, dict) or not situations:
         raise NutritionPlanError("Nutrition plan requires non-empty 'situaciones'.")
     if not isinstance(meals, dict) or not meals:
         raise NutritionPlanError("Nutrition plan requires non-empty 'comidas'.")
 
     _validate_meals(meals)
+    validated_moments = _validate_moments(moments or {})
     validated_situations = _validate_situations(situations, meals)
     return NutritionPlan(
         plan_id=plan_id.strip(),
+        moments=validated_moments,
         situations=validated_situations,
         meals=meals,
     )
@@ -107,18 +113,35 @@ def _validate_situations(
     return validated
 
 
+def _validate_moments(moments: Mapping[str, Any]) -> Mapping[str, Mapping[str, Any]]:
+    validated: dict[str, Mapping[str, Any]] = {}
+    for moment_key, moment in moments.items():
+        if not isinstance(moment_key, str) or not moment_key.strip():
+            raise NutritionPlanError("Moment keys must be non-empty strings.")
+        if not isinstance(moment, dict):
+            raise NutritionPlanError(f"Moment '{moment_key}' must be an object.")
+        aliases = moment.get("aliases", [])
+        if aliases is not None and not _is_string_list(aliases):
+            raise NutritionPlanError(
+                f"Moment '{moment_key}' field 'aliases' must be a string list."
+            )
+        label = moment.get("label")
+        if label is not None and (not isinstance(label, str) or not label.strip()):
+            raise NutritionPlanError(
+                f"Moment '{moment_key}' field 'label' must be a non-empty string."
+            )
+        validated[moment_key] = moment
+    return validated
+
+
 def _is_string_list(value: object) -> bool:
     return isinstance(value, list) and all(
         isinstance(item, str) and item.strip() for item in value
     )
 
 
-def load_nutrition_plan_file(
-    profile_root: Path,
-    plan_file: str,
-) -> NutritionPlan:
-    """Load a configured profile plan file and validate its JSON content."""
-    plan_path = _resolve_profile_plan_file(profile_root, plan_file)
+def load_nutrition_plan_file(plan_path: Path) -> NutritionPlan:
+    """Load a configured nutrition plan file and validate its JSON content."""
     try:
         data = json.loads(plan_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -133,21 +156,3 @@ def load_nutrition_plan_file(
     if not isinstance(data, dict):
         raise NutritionPlanError("Nutrition plan file must contain a JSON object.")
     return parse_nutrition_plan(data)
-
-
-def _resolve_profile_plan_file(profile_root: Path, plan_file: str) -> Path:
-    if not plan_file.strip():
-        raise NutritionPlanError("Nutrition plan file path must not be empty.")
-    path = Path(plan_file)
-    if path.is_absolute():
-        raise NutritionPlanError("Nutrition plan file must use a relative path.")
-
-    profile_root_resolved = profile_root.resolve()
-    resolved = (profile_root / path).resolve()
-    if resolved != profile_root_resolved and profile_root_resolved not in (
-        resolved.parents
-    ):
-        raise NutritionPlanError(
-            "Nutrition plan file must stay inside the profile folder."
-        )
-    return resolved

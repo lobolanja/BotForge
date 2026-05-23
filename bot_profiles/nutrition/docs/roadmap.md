@@ -62,6 +62,9 @@ Definition of done:
   `situaciones` when available.
 - The runtime should detect situation and meal moment locally when possible,
   then send only the resolved meal block to the LLM.
+- For the basic happy path, the answer should recommend one concrete valid
+  option from the resolved block, with plan quantities, instead of listing the
+  whole block.
 - If situation or moment is missing, bot asks one concise clarification instead
   of sending the full plan.
 - Bot does not invent quantities or foods.

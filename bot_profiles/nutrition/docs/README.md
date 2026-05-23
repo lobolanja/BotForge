@@ -50,6 +50,8 @@ adaptation_rules -> helps adjust dishes without breaking the plan
 
 Example capabilities this design must support:
 
+- "Que ceno hoy dia de no entreno?" -> one concrete dinner option with plan
+  quantities.
 - "Hoy tengo crossfit, que puedo comer?"
 - "Que ceno hoy si me he saltado la media manana?"
 - "Hazme un plan de comidas y cenas para la semana: lunes ciclismo,
@@ -60,7 +62,8 @@ In all cases, `comidas` remains the source of truth for quantities.
 Runtime principle:
 
 ```text
-detect situation + detect moment -> resolve comida -> send only that chunk
+detect situation + detect moment -> resolve comida -> choose valid option path
+-> answer with plan quantities
 ```
 
 The bot should not send the full plan to the LLM when it can select the
@@ -108,6 +111,5 @@ Out of V1:
 - batch cooking workflows.
 
 The demo-plan phase before full persistence uses the same data shape but starts
-simpler: a repository demo plan can be loaded as read-only profile context, and
-issue #94 adds a local router so only the resolved comida chunk reaches the
-LLM.
+simpler: a repository demo plan is configured through `nutrition_plan_file`, and
+issue #94 adds a local router so only the resolved comida chunk reaches the LLM.
