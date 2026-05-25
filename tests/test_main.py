@@ -15,6 +15,14 @@ def test_runtime_processes_updates_concurrently() -> None:
     assert ".post_init(recover_and_drain_queued_messages)" in main_source
 
 
+def test_document_uploads_can_continue_set_plan_without_caption() -> None:
+    main_source = Path("src/forge_bot/main.py").read_text(encoding="utf-8")
+    document_handler = "MessageHandler(\n            filters.Document.ALL,"
+
+    assert document_handler in main_source
+    assert "filters.CaptionRegex" not in main_source
+
+
 @pytest.mark.asyncio
 async def test_startup_drain_replays_recoverable_queued_updates(
     monkeypatch: pytest.MonkeyPatch,

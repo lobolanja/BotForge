@@ -372,9 +372,11 @@ def _available_moments(
     if not isinstance(moments, dict):
         return ()
     return _dedupe_labels(
-        _moment_label(plan, str(moment))
-        for moment in moments.keys()
-        if not plan.moments or moment in plan.moments
+        tuple(
+            _moment_label(plan, str(moment))
+            for moment in moments.keys()
+            if not plan.moments or moment in plan.moments
+        )
     )
 
 

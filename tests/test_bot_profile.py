@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,7 @@ def test_load_default_bot_profile_successfully() -> None:
     )
     assert "Do not reveal internal reasoning" in profile.system_prompt
     assert profile.llm_provider == "ollama"
+    assert profile.memory_backend == "postgres"
 
 
 def test_load_nutrition_bot_profile_successfully() -> None:
@@ -64,12 +66,46 @@ def test_load_nutrition_bot_profile_successfully() -> None:
     assert profile.llm_provider == "nvidia"
     assert profile.llm_model == "nvidia/llama-3.3-nemotron-super-49b-v1.5"
     assert profile.memory_enabled is True
+    assert profile.memory_backend == "langchain_postgres"
     assert profile.context_documents == ()
-    assert profile.nutrition_plan_path is not None
-    assert profile.nutrition_plan_path.name == "demo_plan.json"
+    assert profile.nutrition_plan_path is None
     assert "no finjas que lo hay" in profile.system_prompt
     assert "No diagnostiques" in profile.system_prompt
     assert any("no inventes dietas" in rule for rule in profile.domain_rules)
+
+
+def test_memory_backend_can_be_configured_per_profile(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"memory_backend": "langchain_postgres"})
+
+    profile = load_active_bot_profile(
+        "nutrition_dev",
+        "bot_profiles",
+        base_path=tmp_path,
+    )
+
+    assert profile.memory_backend == "langchain_postgres"
+
+
+def test_memory_backend_rejects_empty_value(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"memory_backend": ""})
+
+    with pytest.raises(BotProfileError, match="memory_backend"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
+
+
+def test_memory_backend_rejects_unknown_value(tmp_path: Path) -> None:
+    write_profile(tmp_path, overrides={"memory_backend": "unknown_backend"})
+
+    with pytest.raises(BotProfileError, match="memory_backend"):
+        load_active_bot_profile(
+            "nutrition_dev",
+            "bot_profiles",
+            base_path=tmp_path,
+        )
 
 
 def test_fail_when_selected_profile_is_missing(tmp_path: Path) -> None:
@@ -160,11 +196,15 @@ def test_prompt_assembly_includes_system_prompt_before_user_message(
             {"role": "assistant", "content": "How can I help today?"}
         ],
         runtime_safety_instructions=["Escalate emergency symptoms."],
+        now=datetime(2026, 5, 24, 12, 30, tzinfo=timezone.utc),
     )
 
     assert messages[0]["role"] == "system"
     assert "You are a nutrition assistant." in messages[0]["content"]
     assert "Avoid medical diagnosis." in messages[0]["content"]
+    assert "Current runtime date and time" in messages[0]["content"]
+    assert "2026-05-24" in messages[0]["content"]
+    assert "today, tomorrow, yesterday" in messages[0]["content"]
     assert "Available conversation context" in messages[0]["content"]
     assert "Do not say you have no memory" in messages[0]["content"]
     assert "Compacted memory:\nPrefers vegetarian meals." in messages[0]["content"]
@@ -188,16 +228,17 @@ def test_nutrition_profile_prompt_assembly_includes_guardrails() -> None:
     )
 
     system_message = messages[0]["content"]
-    assert "Eres un bot nutricionista conversacional" in system_message
-    assert "Las cantidades, opciones y ajustes concretos deben salir del plan" in (
-        system_message
-    )
-    assert "No muestres macros, calorias ni calculos detallados" in system_message
+    assert "Eres un asistente nutricional conversacional" in system_message
+    assert "El plan activo del usuario manda." in system_message
+    assert "`situaciones` decide que bloque toca" in system_message
+    assert "`comidas` define alimentos, cantidades" in system_message
+    assert "no muestres JSON ni claves internas" in system_message
+    assert "no expliques macros salvo que se pidan" in system_message
     assert "Disclaimer: Este bot ayuda a interpretar un plan nutricional" in (
         system_message
     )
     assert "Profile context documents:" not in system_message
-    assert "Document: demo_plan.json" not in system_message
+    assert "Document: nutrition_plan.json" not in system_message
     assert '"crossfit"' not in system_message
     assert '"comida_2"' not in system_message
     assert "El usuario prefiere cenas sencillas." in messages[0]["content"]

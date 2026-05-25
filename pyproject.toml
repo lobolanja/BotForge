@@ -36,6 +36,8 @@ dependencies = [
     "bcrypt>=4.1.0",
     "alembic>=1.13.0",
     "certifi>=2024.0.0",
+    "langchain-core>=0.3.0,<2.0",
+    "langchain-postgres>=0.0.17,<0.1.0",
 ]
 
 [project.optional-dependencies]

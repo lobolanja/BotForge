@@ -3,7 +3,6 @@
   "bot_display_name": "Bot Nutricionista",
   "bot_description": "Perfil nutricionista para ayudar a aplicar planes nutricionales estructurados desde Telegram.",
   "system_prompt_file": "system_prompt.md",
-  "nutrition_plan_file": "demo_plan.json",
   "domain_rules": [
     "Responde en espanol por defecto con tono claro, directo y practico.",
     "Ayuda a interpretar y aplicar el plan nutricional del usuario; no inventes dietas completas desde cero.",
@@ -19,5 +18,6 @@
   "llm_provider": "nvidia",
   "llm_model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
   "memory_enabled": true,
+  "memory_backend": "langchain_postgres",
   "analytics_enabled": false
 }

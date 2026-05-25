@@ -33,6 +33,7 @@ def fake_profile() -> BotProfile:
         llm_provider="ollama",
         llm_model="test-model",
         memory_enabled=False,
+        memory_backend="postgres",
         analytics_enabled=False,
     )
 
@@ -46,8 +47,11 @@ def fake_settings(**overrides: object) -> SimpleNamespace:
         "nvidia_api_key": "",
         "nvidia_base_url": "https://integrate.api.nvidia.com/v1",
         "nvidia_model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+        "nutrition_normalizer_provider": "off",
+        "nutrition_normalizer_model": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
         "bot_profile": "default_dev",
         "bot_profiles_dir": "bot_profiles",
+        "bot_timezone": "Europe/Madrid",
         "ai_timeout_seconds": 1,
         "ai_max_response_chars": 4000,
     }
@@ -413,10 +417,10 @@ async def test_nutrition_profile_sends_only_resolved_plan_chunk(
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
         context_documents=(
             BotProfileContextDocument(
-                name="demo_plan.json",
+                name="sample_plan.json",
                 content='{"comida_5": "should not be sent"}',
             ),
         ),
@@ -443,6 +447,58 @@ async def test_nutrition_profile_sends_only_resolved_plan_chunk(
 
 
 @pytest.mark.asyncio
+async def test_nutrition_profile_uses_configured_normalizer_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    used_models: list[str] = []
+
+    class FakeProvider:
+        name = "nvidia"
+
+        async def chat(self, *, model: str, messages: list[dict[str, str]]) -> str:
+            used_models.append(model)
+            system_message = messages[0]["content"]
+            if "Normalize one Spanish nutrition-bot user message" in system_message:
+                return (
+                    '{"intent":"recommend_meal","situation_key":"futbol",'
+                    '"situation_keys":["futbol"],"target_moment_key":"cena",'
+                    '"mentioned_moment_keys":["cena"],"logged_meals":[],'
+                    '"goal":"resolver cena","confidence":"high"}'
+                )
+            return "nutrition answer"
+
+    nutrition_profile = replace(
+        fake_profile(),
+        bot_profile_id="nutrition",
+        llm_provider="nvidia",
+        llm_model="nvidia/final-answer-model",
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "get_settings",
+        lambda: fake_settings(
+            nutrition_normalizer_provider="nvidia",
+            nutrition_normalizer_model="nvidia/cheap-normalizer",
+        ),
+    )
+    monkeypatch.setattr(
+        engine,
+        "load_active_bot_profile",
+        lambda *args: nutrition_profile,
+    )
+    monkeypatch.setattr(engine, "_build_provider", lambda name: FakeProvider())
+
+    result = await engine.answer(
+        "Ada",
+        "Hola, hoy es dia de futbol, que puedo tomar para la cena?",
+    )
+
+    assert result == "nutrition answer"
+    assert used_models == ["nvidia/cheap-normalizer", "nvidia/final-answer-model"]
+
+
+@pytest.mark.asyncio
 async def test_nutrition_profile_sanitizes_resolved_answer_without_extra_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -457,7 +513,7 @@ async def test_nutrition_profile_sanitizes_resolved_answer_without_extra_cap(
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
     )
     monkeypatch.setattr(
         engine,
@@ -497,10 +553,10 @@ async def test_nutrition_profile_sends_resolved_full_day_chunks(
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
         context_documents=(
             BotProfileContextDocument(
-                name="demo_plan.json",
+                name="sample_plan.json",
                 content='{"comida_5": "should not be sent"}',
             ),
         ),
@@ -549,7 +605,7 @@ async def test_nutrition_profile_missing_moment_asks_without_llm(
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
     )
     monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
     monkeypatch.setattr(
@@ -583,7 +639,7 @@ async def test_nutrition_profile_resolves_follow_up_moment_from_recent_user_mess
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
     )
     monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
     monkeypatch.setattr(
@@ -607,7 +663,7 @@ async def test_nutrition_profile_resolves_follow_up_moment_from_recent_user_mess
     assert '"situation_key": "no_entreno"' in system_message
     assert '"moment_key": "cena"' in system_message
     assert '"meal_block_key": "comida_3"' in system_message
-    assert "Recent conversation:" not in system_message
+    assert "Recent conversation:" in system_message
 
 
 @pytest.mark.asyncio
@@ -628,7 +684,7 @@ async def test_nutrition_profile_resolves_follow_up_situation_from_recent_user_m
         fake_profile(),
         bot_profile_id="nutrition",
         llm_provider="nvidia",
-        nutrition_plan_path=Path("bot_profiles/nutrition/demo_plan.json"),
+        nutrition_plan_path=Path("tests/fixtures/nutrition_plan.json"),
     )
     monkeypatch.setattr(engine, "get_settings", lambda: fake_settings())
     monkeypatch.setattr(
@@ -652,7 +708,7 @@ async def test_nutrition_profile_resolves_follow_up_situation_from_recent_user_m
     assert '"situation_key": "no_entreno"' in system_message
     assert '"moment_key": "cena"' in system_message
     assert '"meal_block_key": "comida_3"' in system_message
-    assert "Recent conversation:" not in system_message
+    assert "Recent conversation:" in system_message
 
 
 @pytest.mark.asyncio

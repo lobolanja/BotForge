@@ -1,5 +1,5 @@
 {
-  "plan_id": "demo_nutrition_plan_v1",
+  "plan_id": "sample_nutrition_plan_v1",
   "description": "Plan demo cargado desde el repo para validar respuestas del bot nutricionista antes de persistencia por usuario.",
   "usage_notes": [
     "situaciones enruta tipo de dia + momento a una clave de comidas.",
@@ -149,6 +149,28 @@
         "carrera",
         "series",
         "tirada"
+      ],
+      "tipo_dia": "entrenamiento_resistencia",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "comida": "comida_2",
+        "mediodia": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "natacion": {
+      "label": "Natacion",
+      "aliases": [
+        "natacion",
+        "natación",
+        "nadar",
+        "piscina",
+        "swimming"
       ],
       "tipo_dia": "entrenamiento_resistencia",
       "suplementacion": [

@@ -898,6 +898,27 @@ def _clear_user_memory_records(cursor: Any, *, user_id: int) -> tuple[int, int]:
     )
     conversation_memory = int(cursor.rowcount or 0)
     cursor.execute(
+        """
+        DELETE FROM langchain_chat_history
+        WHERE session_id IN (
+            SELECT session_id
+            FROM langchain_chat_sessions
+            WHERE user_id = %s
+        )
+        """,
+        (user_id,),
+    )
+    conversation_memory += int(cursor.rowcount or 0)
+    cursor.execute(
+        "DELETE FROM langchain_chat_sessions WHERE user_id = %s",
+        (user_id,),
+    )
+    cursor.execute(
+        "DELETE FROM nutrition_daily_logs WHERE user_id = %s",
+        (user_id,),
+    )
+    conversation_memory += int(cursor.rowcount or 0)
+    cursor.execute(
         "DELETE FROM user_memory_summaries WHERE user_id = %s",
         (user_id,),
     )

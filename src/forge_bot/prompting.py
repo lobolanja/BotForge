@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from datetime import datetime
 from typing import TypedDict
 
 from .bot_profile import BotProfile
@@ -20,6 +21,7 @@ def assemble_prompt_messages(
     compacted_user_memory: str | None = None,
     recent_conversation_messages: Sequence[ChatMessage] | None = None,
     runtime_safety_instructions: Iterable[str] | None = None,
+    now: datetime | None = None,
 ) -> list[ChatMessage]:
     """Build the ordered message list sent to the configured LLM.
 
@@ -37,6 +39,7 @@ def assemble_prompt_messages(
                 profile,
                 runtime_safety_instructions,
                 memory_content=memory_content,
+                now=now or datetime.now().astimezone(),
             ),
         }
     ]
@@ -85,6 +88,7 @@ def _system_content(
     runtime_safety_instructions: Iterable[str] | None,
     *,
     memory_content: str | None = None,
+    now: datetime,
 ) -> str:
     """Combine profile instructions and runtime safety rules."""
     sections = [
@@ -92,6 +96,7 @@ def _system_content(
         "Domain rules:\n" + "\n".join(f"- {rule}" for rule in profile.domain_rules),
         f"Default language: {profile.default_language}",
         f"Disclaimer: {profile.disclaimer_text}",
+        _current_datetime_content(now),
     ]
     if memory_content:
         sections.append(memory_content)
@@ -121,3 +126,15 @@ def _system_content(
             )
 
     return "\n\n".join(sections)
+
+
+def _current_datetime_content(now: datetime) -> str:
+    local_now = now if now.tzinfo is not None else now.astimezone()
+    return (
+        "Current runtime date and time:\n"
+        f"- ISO datetime: {local_now.isoformat()}\n"
+        f"- Date: {local_now.date().isoformat()}\n"
+        f"- Timezone: {local_now.tzname() or 'local'}\n"
+        "- Use this as the real current date/time for relative references like "
+        "today, tomorrow, yesterday, this week, or tonight."
+    )

@@ -8,6 +8,7 @@ from typing import Any
 
 PROFILE_FILE_NAME = "profile.json"
 MAX_CONTEXT_DOCUMENT_CHARS = 120_000
+SUPPORTED_MEMORY_BACKENDS = frozenset({"postgres", "langchain_postgres"})
 
 
 class BotProfileError(RuntimeError):
@@ -40,6 +41,7 @@ class BotProfile:
     llm_provider: str
     llm_model: str
     memory_enabled: bool
+    memory_backend: str
     analytics_enabled: bool
     context_documents: tuple[BotProfileContextDocument, ...] = ()
     nutrition_plan_path: Path | None = None
@@ -106,6 +108,7 @@ def load_bot_profile(
         llm_provider=_required_text(data, "llm_provider"),
         llm_model=_required_text(data, "llm_model"),
         memory_enabled=_required_bool(data, "memory_enabled"),
+        memory_backend=_memory_backend(data),
         analytics_enabled=_required_bool(data, "analytics_enabled"),
         context_documents=_load_context_documents(data, profile_root),
         nutrition_plan_path=_optional_profile_file(
@@ -141,6 +144,27 @@ def _required_text(data: Mapping[str, Any], field: str) -> str:
             f"Bot profile field '{field}' must be a non-empty string."
         )
     return value.strip()
+
+
+def _optional_text(data: Mapping[str, Any], field: str, *, default: str) -> str:
+    value = data.get(field)
+    if value is None:
+        return default
+    if not isinstance(value, str) or not value.strip():
+        raise BotProfileError(
+            f"Bot profile field '{field}' must be a non-empty string when set."
+        )
+    return value.strip()
+
+
+def _memory_backend(data: Mapping[str, Any]) -> str:
+    backend = _optional_text(data, "memory_backend", default="postgres").lower()
+    if backend not in SUPPORTED_MEMORY_BACKENDS:
+        options = ", ".join(sorted(SUPPORTED_MEMORY_BACKENDS))
+        raise BotProfileError(
+            f"Bot profile field 'memory_backend' must be one of: {options}."
+        )
+    return backend
 
 
 def _required_bool(data: Mapping[str, Any], field: str) -> bool:

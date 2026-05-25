@@ -15,22 +15,22 @@ from forge_bot.nutrition.router import (
     resolve_meal_context,
 )
 
-DEMO_PLAN_PATH = Path("bot_profiles/nutrition/demo_plan.json")
-NUTRITION_PROFILE_ROOT = Path("bot_profiles/nutrition")
+NUTRITION_PLAN_FIXTURE_PATH = Path("tests/fixtures/nutrition_plan.json")
+NUTRITION_FIXTURE_ROOT = Path("tests/fixtures")
 
 
 @pytest.fixture
-def demo_plan() -> NutritionPlan:
-    return load_nutrition_plan_file(NUTRITION_PROFILE_ROOT / "demo_plan.json")
+def sample_plan() -> NutritionPlan:
+    return load_nutrition_plan_file(NUTRITION_FIXTURE_ROOT / "nutrition_plan.json")
 
 
-def test_load_configured_nutrition_plan_file(demo_plan) -> None:
-    assert demo_plan.plan_id == "demo_nutrition_plan_v1"
-    assert "media_manana" in demo_plan.moments
-    assert "pre_entreno" in demo_plan.moments
-    assert "post_entreno" in demo_plan.moments
-    assert "crossfit" in demo_plan.situations
-    assert "comida_2" in demo_plan.meals
+def test_load_configured_nutrition_plan_file(sample_plan) -> None:
+    assert sample_plan.plan_id == "sample_nutrition_plan_v1"
+    assert "media_manana" in sample_plan.moments
+    assert "pre_entreno" in sample_plan.moments
+    assert "post_entreno" in sample_plan.moments
+    assert "crossfit" in sample_plan.situations
+    assert "comida_2" in sample_plan.meals
 
 
 def test_configured_plan_loader_rejects_missing_file(tmp_path: Path) -> None:
@@ -38,8 +38,8 @@ def test_configured_plan_loader_rejects_missing_file(tmp_path: Path) -> None:
         load_nutrition_plan_file(tmp_path / "missing.json")
 
 
-def test_demo_plan_file_exists() -> None:
-    assert DEMO_PLAN_PATH.is_file()
+def test_nutrition_plan_fixture_exists() -> None:
+    assert NUTRITION_PLAN_FIXTURE_PATH.is_file()
 
 
 def test_plan_validation_rejects_missing_meal_reference() -> None:
@@ -99,8 +99,12 @@ def test_normalize_text_removes_accents_and_punctuation() -> None:
         ("hoy no entreno", "no_entreno"),
     ],
 )
-def test_detect_situations_from_aliases(demo_plan, message: str, expected: str) -> None:
-    matches = detect_situations(demo_plan, message)
+def test_detect_situations_from_aliases(
+    sample_plan,
+    message: str,
+    expected: str,
+) -> None:
+    matches = detect_situations(sample_plan, message)
 
     assert tuple(match.key for match in matches) == (expected,)
 
@@ -116,8 +120,8 @@ def test_detect_situations_from_aliases(demo_plan, message: str, expected: str) 
         ("que ceno por la noche", "cena"),
     ],
 )
-def test_detect_moments(demo_plan, message: str, expected: str) -> None:
-    matches = detect_moments(demo_plan, message)
+def test_detect_moments(sample_plan, message: str, expected: str) -> None:
+    matches = detect_moments(sample_plan, message)
 
     assert tuple(match.key for match in matches) == (expected,)
 
@@ -130,11 +134,11 @@ def test_detect_moments(demo_plan, message: str, expected: str) -> None:
     ],
 )
 def test_detect_plan_defined_moments(
-    demo_plan,
+    sample_plan,
     message: str,
     expected: str,
 ) -> None:
-    matches = detect_moments(demo_plan, message)
+    matches = detect_moments(sample_plan, message)
 
     assert tuple(match.key for match in matches) == (expected,)
 
@@ -149,19 +153,19 @@ def test_detect_plan_defined_moments(
         ("Tengo atletismo, que desayuno?", "comida_1"),
     ],
 )
-def test_resolve_meal_context(demo_plan, message: str, meal_key: str) -> None:
-    resolution = resolve_meal_context(demo_plan, message)
+def test_resolve_meal_context(sample_plan, message: str, meal_key: str) -> None:
+    resolution = resolve_meal_context(sample_plan, message)
 
     assert resolution.status == "resolved"
     assert resolution.is_resolved
     assert resolution.meal_block_key == meal_key
-    assert resolution.meal_block is demo_plan.meals[meal_key]
+    assert resolution.meal_block is sample_plan.meals[meal_key]
     assert resolution.supplementation == ("10g de creatina monohidrato creapure",)
 
 
-def test_resolve_full_day_context_uses_only_canonical_plan_moments(demo_plan) -> None:
+def test_resolve_full_day_context_uses_only_canonical_plan_moments(sample_plan) -> None:
     resolution = resolve_meal_context(
-        demo_plan,
+        sample_plan,
         "Dame todo lo que puedo comer hoy dia de ciclismo",
     )
 
@@ -179,8 +183,8 @@ def test_resolve_full_day_context_uses_only_canonical_plan_moments(demo_plan) ->
     )
 
 
-def test_resolve_missing_situation(demo_plan) -> None:
-    resolution = resolve_meal_context(demo_plan, "que como al mediodia?")
+def test_resolve_missing_situation(sample_plan) -> None:
+    resolution = resolve_meal_context(sample_plan, "que como al mediodia?")
 
     assert resolution.status == "missing_situation"
     assert "CrossFit o entrenamiento de fuerza alta intensidad" in (
@@ -188,8 +192,8 @@ def test_resolve_missing_situation(demo_plan) -> None:
     )
 
 
-def test_resolve_missing_moment(demo_plan) -> None:
-    resolution = resolve_meal_context(demo_plan, "hoy tengo crossfit")
+def test_resolve_missing_moment(sample_plan) -> None:
+    resolution = resolve_meal_context(sample_plan, "hoy tengo crossfit")
 
     assert resolution.status == "missing_moment"
     assert resolution.situation_key == "crossfit"
@@ -201,9 +205,9 @@ def test_resolve_missing_moment(demo_plan) -> None:
     )
 
 
-def test_resolve_unmapped_plan_defined_moment(demo_plan) -> None:
+def test_resolve_unmapped_plan_defined_moment(sample_plan) -> None:
     resolution = resolve_meal_context(
-        demo_plan,
+        sample_plan,
         "hoy tengo crossfit, que tomo a media mañana?",
     )
 
@@ -212,9 +216,9 @@ def test_resolve_unmapped_plan_defined_moment(demo_plan) -> None:
     assert resolution.moment_key == "media_manana"
 
 
-def test_resolve_ambiguous_situation(demo_plan) -> None:
+def test_resolve_ambiguous_situation(sample_plan) -> None:
     resolution = resolve_meal_context(
-        demo_plan,
+        sample_plan,
         "hoy descanso pero hago bici suave, que como al mediodia?",
     )
 
@@ -225,9 +229,9 @@ def test_resolve_ambiguous_situation(demo_plan) -> None:
     )
 
 
-def test_resolve_ambiguous_moment(demo_plan) -> None:
+def test_resolve_ambiguous_moment(sample_plan) -> None:
     resolution = resolve_meal_context(
-        demo_plan,
+        sample_plan,
         "hoy tengo crossfit, comida y cena?",
     )
 
