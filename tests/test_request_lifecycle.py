@@ -144,6 +144,7 @@ def authorize_user(monkeypatch: pytest.MonkeyPatch) -> None:
 def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(router, "abuse_limiter", AbuseLimiter(make_settings))
     monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(router, "get_user_by_telegram_id", lambda telegram_id: None)
     monkeypatch.setattr(
         router,
         "append_debug_conversation_turn",
