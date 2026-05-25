@@ -37,6 +37,10 @@ def sample_plan_data() -> dict[str, Any]:
     }
 
 
+def jsonb_obj(value: object) -> Any:
+    return getattr(value, "obj", value)
+
+
 class FakeCursor:
     def __init__(self) -> None:
         self.statements: list[str] = []
@@ -118,6 +122,12 @@ def test_save_active_nutrition_plan_archives_previous_and_inserts_document(
     assert "comidas" in document_types
     assert "reglas_adaptacion" in document_types
     assert "recetas" in document_types
+    situations_content = next(
+        jsonb_obj(params[2])
+        for params in connection.cursor_obj.params
+        if len(params) == 3 and params[1] == "situaciones"
+    )
+    assert situations_content["momentos"] == sample_plan_data()["momentos"]
 
 
 def test_load_active_nutrition_plan_parses_stored_json(monkeypatch) -> None:
@@ -129,6 +139,7 @@ def test_load_active_nutrition_plan_parses_stored_json(monkeypatch) -> None:
                 "document_type": "situaciones",
                 "content": {
                     "plan_id": "sample_plan",
+                    "momentos": sample_plan_data()["momentos"],
                     "situaciones": sample_plan_data()["situaciones"],
                 },
             },
@@ -148,6 +159,7 @@ def test_load_active_nutrition_plan_parses_stored_json(monkeypatch) -> None:
 
     assert plan is not None
     assert plan.plan_id == "sample_plan"
+    assert plan.moments.keys() == {"cena"}
     assert plan.situations.keys() == {"no_entreno"}
     assert connection.closed is True
 
@@ -161,6 +173,7 @@ def test_save_nutrition_plan_part_waits_for_missing_document(monkeypatch) -> Non
                 "document_type": "situaciones",
                 "content": {
                     "plan_id": "sample_plan",
+                    "momentos": sample_plan_data()["momentos"],
                     "situaciones": sample_plan_data()["situaciones"],
                 },
             }
@@ -173,6 +186,7 @@ def test_save_nutrition_plan_part_waits_for_missing_document(monkeypatch) -> Non
         document_type="situaciones",
         content={
             "plan_id": "sample_plan",
+            "momentos": sample_plan_data()["momentos"],
             "situaciones": sample_plan_data()["situaciones"],
         },
         source_filename="situaciones.json",
@@ -181,6 +195,12 @@ def test_save_nutrition_plan_part_waits_for_missing_document(monkeypatch) -> Non
     assert result.activated is False
     assert result.missing_document_types == ("comidas",)
     assert connection.committed is True
+    upsert_content = next(
+        jsonb_obj(params[2])
+        for params in connection.cursor_obj.params
+        if len(params) == 3 and params[1] == "situaciones"
+    )
+    assert upsert_content["momentos"] == sample_plan_data()["momentos"]
 
 
 def test_save_nutrition_plan_part_activates_when_both_documents_exist(
@@ -194,6 +214,7 @@ def test_save_nutrition_plan_part_activates_when_both_documents_exist(
                 "document_type": "situaciones",
                 "content": {
                     "plan_id": "sample_plan",
+                    "momentos": sample_plan_data()["momentos"],
                     "situaciones": sample_plan_data()["situaciones"],
                 },
             },

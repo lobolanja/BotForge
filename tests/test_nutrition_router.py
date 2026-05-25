@@ -82,6 +82,82 @@ def test_plan_validation_rejects_invalid_moment_aliases() -> None:
         )
 
 
+def minimal_plan_with_meal(meal: dict[str, object]) -> dict[str, object]:
+    return {
+        "momentos": {
+            "almuerzo": {"aliases": ["almuerzo"]},
+        },
+        "situaciones": {
+            "no_entreno": {
+                "aliases": ["no entreno"],
+                "momentos": {"almuerzo": "comida_1"},
+            }
+        },
+        "comidas": {"comida_1": meal},
+    }
+
+
+def test_plan_validation_accepts_nested_and_or_meal_tree() -> None:
+    plan = parse_nutrition_plan(
+        minimal_plan_with_meal(
+            {
+                "descripcion": "Almuerzo",
+                "and": [
+                    {
+                        "nombre": "proteina",
+                        "or": ["200g pollo", "220g merluza"],
+                    },
+                    {
+                        "nombre": "hidrato_y_grasa",
+                        "and": ["80g arroz", "10g aceite"],
+                    },
+                ],
+                "warnings": ["Ajustar si hay hambre real."],
+            }
+        )
+    )
+
+    assert plan.meals["comida_1"]["descripcion"] == "Almuerzo"
+
+
+def test_plan_validation_rejects_meal_without_and_or_tree() -> None:
+    with pytest.raises(NutritionPlanError, match="exactly one logical operator"):
+        parse_nutrition_plan(minimal_plan_with_meal({"descripcion": "Almuerzo"}))
+
+
+def test_plan_validation_rejects_meal_with_both_and_or() -> None:
+    with pytest.raises(NutritionPlanError, match="exactly one logical operator"):
+        parse_nutrition_plan(
+            minimal_plan_with_meal(
+                {
+                    "descripcion": "Almuerzo",
+                    "and": ["200g pollo"],
+                    "or": ["220g merluza"],
+                }
+            )
+        )
+
+
+def test_plan_validation_rejects_empty_logical_group() -> None:
+    with pytest.raises(NutritionPlanError, match="non-empty list"):
+        parse_nutrition_plan(
+            minimal_plan_with_meal({"descripcion": "Almuerzo", "or": []})
+        )
+
+
+def test_plan_validation_rejects_invalid_logical_metadata() -> None:
+    with pytest.raises(NutritionPlanError, match="warnings"):
+        parse_nutrition_plan(
+            minimal_plan_with_meal(
+                {
+                    "descripcion": "Almuerzo",
+                    "and": ["200g pollo"],
+                    "warnings": ["ok", ""],
+                }
+            )
+        )
+
+
 def test_normalize_text_removes_accents_and_punctuation() -> None:
     assert normalize_text("¿Qué como al mediodía?") == "que como al mediodia"
 

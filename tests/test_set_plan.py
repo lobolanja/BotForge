@@ -174,6 +174,9 @@ async def test_set_plan_accepts_partial_situations_json(
         "/set_plan "
         + json.dumps(
             {
+                "momentos": {
+                    "cena": {"label": "Cena", "aliases": ["cena", "noche"]}
+                },
                 "situaciones": {
                     "no_entreno": {
                         "momentos": {"cena": "comida_1"},
@@ -187,6 +190,9 @@ async def test_set_plan_accepts_partial_situations_json(
     await set_plan(update, SimpleNamespace(args=[]))
 
     assert partial_calls[0]["document_type"] == "situaciones"
+    assert partial_calls[0]["content"]["momentos"] == {
+        "cena": {"label": "Cena", "aliases": ["cena", "noche"]}
+    }
     assert "Parte del plan guardada." in update.message.replies[0]
     assert "Falta: comidas" in update.message.replies[0]
 

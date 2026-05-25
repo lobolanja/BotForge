@@ -630,6 +630,75 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
 
 
 @pytest.mark.asyncio
+async def test_operational_fallback_is_not_stored_as_memory_or_debug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    update = fake_update(update_id=30051)
+    memory_backend = FakeMemoryBackend()
+    debug_turns: list[object] = []
+    compacted: list[object] = []
+
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"id": 57, "status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"id": 57, "status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_memory_profile)
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(
+        router,
+        "get_user_by_telegram_id",
+        lambda telegram_id: {"id": 777, "username": "ada"},
+    )
+    monkeypatch.setattr(
+        router,
+        "memory_backend_for_profile",
+        lambda profile: memory_backend,
+    )
+    monkeypatch.setattr(
+        router,
+        "append_debug_conversation_turn",
+        lambda turn: debug_turns.append(turn) or True,
+    )
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        return engine.GeneratedAnswer(
+            engine.AI_TIMEOUT_FALLBACK,
+            debug_log=False,
+            store_in_memory=False,
+        )
+
+    async def compact_turn(**kwargs: object) -> None:
+        compacted.append(kwargs)
+
+    monkeypatch.setattr(engine, "answer", answer)
+    monkeypatch.setattr(router, "_compact_successful_turn", compact_turn)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == [engine.AI_TIMEOUT_FALLBACK]
+    assert debug_turns == []
+    assert memory_backend.stored_turns == []
+    assert compacted == []
+
+
+@pytest.mark.asyncio
 async def test_memory_compaction_runs_after_ai_lease_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

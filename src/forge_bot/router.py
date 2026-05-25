@@ -250,22 +250,27 @@ async def ask_ia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply_ai_answer(update.message, answer)
         mark_answered(update.update_id)
         engine.finalize_successful_answer(answer)
-        _append_debug_conversation_turn(
-            profile=active_profile,
-            user_message=message,
-            assistant_message=answer,
-            telegram_user_id=update.effective_user.id,
-            telegram_chat_id=update.effective_chat.id,
-            telegram_message_id=getattr(update.message, "message_id", None),
-            inbound_message_id=claimed.get("id") if claimed else None,
-            request_id=processing_request.request_id,
-            internal_user_id=(
-                int(internal_user["id"])
-                if internal_user and internal_user.get("id") is not None
-                else None
-            ),
-        )
-        if internal_user and memory_is_enabled:
+        if engine.answer_should_be_debug_logged(answer):
+            _append_debug_conversation_turn(
+                profile=active_profile,
+                user_message=message,
+                assistant_message=answer,
+                telegram_user_id=update.effective_user.id,
+                telegram_chat_id=update.effective_chat.id,
+                telegram_message_id=getattr(update.message, "message_id", None),
+                inbound_message_id=claimed.get("id") if claimed else None,
+                request_id=processing_request.request_id,
+                internal_user_id=(
+                    int(internal_user["id"])
+                    if internal_user and internal_user.get("id") is not None
+                    else None
+                ),
+            )
+        if (
+            internal_user
+            and memory_is_enabled
+            and engine.answer_should_be_stored_in_memory(answer)
+        ):
             stored = _store_successful_turn(
                 internal_user_id=int(internal_user["id"]),
                 bot_profile_id=active_profile.bot_profile_id,

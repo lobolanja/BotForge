@@ -217,7 +217,7 @@ def _partial_plan_payload(raw_text: str) -> tuple[str, dict[str, object]] | None
             {
                 key: value
                 for key, value in payload.items()
-                if key in {"plan_id", "situaciones"}
+                if key in {"plan_id", "momentos", "situaciones"}
             },
         )
     if has_meals:

@@ -35,12 +35,6 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_langchain_chat_history_session_id_id
-        ON langchain_chat_history (session_id, id)
-        """
-    )
-    op.execute(
-        """
         CREATE TABLE IF NOT EXISTS langchain_chat_sessions (
             id BIGSERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
@@ -65,6 +59,5 @@ def downgrade() -> None:
     """Remove LangChain chat memory tables."""
     op.execute("DROP INDEX IF EXISTS ix_langchain_chat_sessions_user_profile")
     op.execute("DROP TABLE IF EXISTS langchain_chat_sessions")
-    op.execute("DROP INDEX IF EXISTS idx_langchain_chat_history_session_id_id")
     op.execute("DROP INDEX IF EXISTS idx_langchain_chat_history_session_id")
     op.execute("DROP TABLE IF EXISTS langchain_chat_history")

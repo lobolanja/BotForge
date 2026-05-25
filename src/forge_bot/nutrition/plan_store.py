@@ -178,6 +178,14 @@ def save_active_nutrition_plan(
             if row is None:
                 raise NutritionPlanStoreError("No se pudo crear el plan.")
             plan_uuid = str(row["id"])
+            situations_document: dict[str, Any] = {
+                "plan_id": plan.plan_id,
+                "situaciones": dict(plan_data["situaciones"]),
+            }
+            moments = plan_data.get("momentos")
+            if isinstance(moments, dict):
+                situations_document["momentos"] = dict(moments)
+
             cursor.execute(
                 """
                 INSERT INTO nutrition_plan_documents (
@@ -188,12 +196,7 @@ def save_active_nutrition_plan(
                 (
                     plan_uuid,
                     NUTRITION_PLAN_SITUATIONS_DOCUMENT_TYPE,
-                    Jsonb(
-                        {
-                            "plan_id": plan.plan_id,
-                            "situaciones": dict(plan_data["situaciones"]),
-                        }
-                    ),
+                    Jsonb(situations_document),
                 ),
             )
             cursor.execute(
@@ -474,6 +477,9 @@ def _combine_plan_documents(
             situations = content.get("situaciones")
             if isinstance(situations, dict):
                 combined["situaciones"] = situations
+            moments = content.get("momentos")
+            if isinstance(moments, dict):
+                combined["momentos"] = moments
         elif document_type == NUTRITION_PLAN_MEALS_DOCUMENT_TYPE:
             meals = content.get("comidas")
             if isinstance(meals, dict):

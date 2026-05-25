@@ -114,6 +114,8 @@ async def test_ai_timeout_returns_fallback(monkeypatch: pytest.MonkeyPatch) -> N
     result = await engine.answer("Ada", "hello")
 
     assert result == engine.AI_TIMEOUT_FALLBACK
+    assert engine.answer_should_be_stored_in_memory(result) is False
+    assert engine.answer_should_be_debug_logged(result) is False
 
 
 @pytest.mark.asyncio
@@ -135,6 +137,8 @@ async def test_ai_exception_returns_fallback_without_logging_message(
         result = await engine.answer("Ada", private_message)
 
     assert result == engine.AI_ERROR_FALLBACK
+    assert engine.answer_should_be_stored_in_memory(result) is False
+    assert engine.answer_should_be_debug_logged(result) is False
     assert private_message not in caplog.text
     assert "message_chars=" in caplog.text
 
@@ -240,6 +244,7 @@ async def test_fallback_provider_answers_when_ollama_fails(
     result = await engine.answer("Ada", "hello", request_id="req-1")
 
     assert result == "fallback answer"
+    assert engine.answer_should_be_stored_in_memory(result) is True
 
 
 @pytest.mark.asyncio
@@ -269,6 +274,7 @@ async def test_fallback_provider_timeout_returns_timeout_fallback(
     result = await engine.answer("Ada", "hello", request_id="req-1")
 
     assert result == engine.AI_TIMEOUT_FALLBACK
+    assert engine.answer_should_be_stored_in_memory(result) is False
 
 
 @pytest.mark.asyncio

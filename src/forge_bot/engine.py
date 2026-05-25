@@ -43,16 +43,22 @@ class ProviderConfigurationError(RuntimeError):
 class GeneratedAnswer(str):
     """String response with optional post-success side effects."""
 
+    debug_log: bool
     post_success_actions: tuple[object, ...]
+    store_in_memory: bool
 
     def __new__(
         cls,
         value: str,
         *,
+        debug_log: bool = True,
         post_success_actions: Sequence[object] = (),
+        store_in_memory: bool = True,
     ) -> "GeneratedAnswer":
         instance = str.__new__(cls, value)
+        instance.debug_log = debug_log
         instance.post_success_actions = tuple(post_success_actions)
+        instance.store_in_memory = store_in_memory
         return instance
 
 
@@ -326,7 +332,7 @@ async def answer(
             settings.ai_timeout_seconds,
             len(msg),
         )
-        return AI_TIMEOUT_FALLBACK
+        return _operational_fallback(AI_TIMEOUT_FALLBACK)
     except ProviderConfigurationError:
         logger.exception(
             "llm_provider_configuration_failed request_id=%s provider_reason=%s "
@@ -335,7 +341,7 @@ async def answer(
             fallback_reason,
             len(msg),
         )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
     except Exception:
         provider_name = _provider_name(provider)
         if provider_name != _fallback_provider_name():
@@ -348,7 +354,7 @@ async def answer(
                 reason="primary_error",
             )
             if fallback_answer is not None:
-                return GeneratedAnswer(fallback_answer)
+                return _fallback_generated_answer(fallback_answer)
 
         logger.exception(
             "llm_chat_failed request_id=%s provider=%s model=%s message_chars=%s",
@@ -357,7 +363,7 @@ async def answer(
             _logged_model(active_profile.llm_model, provider_name),
             len(msg),
         )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
 
     provider_name = _provider_name(provider)
     return GeneratedAnswer(
@@ -480,7 +486,7 @@ async def answer_stream(
             settings.ai_timeout_seconds,
             len(msg),
         )
-        return AI_TIMEOUT_FALLBACK
+        return _operational_fallback(AI_TIMEOUT_FALLBACK)
     except ProviderConfigurationError:
         logger.exception(
             "llm_provider_configuration_failed request_id=%s provider_reason=%s "
@@ -489,7 +495,7 @@ async def answer_stream(
             fallback_reason,
             len(msg),
         )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
     except Exception:
         provider_name = _provider_name(provider)
         logger.exception(
@@ -511,9 +517,9 @@ async def answer_stream(
                     "No he podido completar la respuesta, pero esto es lo que "
                     "llevaba preparado."
                 ),
-                post_success_actions=nutrition_prompt.post_success_actions,
+                store_in_memory=False,
             )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
 
     content = "".join(raw_parts)
     provider_name = _provider_name(provider)
@@ -537,6 +543,16 @@ def finalize_successful_answer(answer: str) -> None:
                 action()
         except Exception:
             logger.exception("post_success_answer_action_failed")
+
+
+def answer_should_be_debug_logged(answer: str) -> bool:
+    """Return whether this answer belongs in the debug conversation transcript."""
+    return bool(getattr(answer, "debug_log", True))
+
+
+def answer_should_be_stored_in_memory(answer: str) -> bool:
+    """Return whether this answer should become reusable user memory."""
+    return bool(getattr(answer, "store_in_memory", True))
 
 
 async def summarize_memory(
@@ -878,6 +894,16 @@ async def _answer_with_fallback(
         model=_logged_model(model, provider.name),
         max_chars=max_chars,
     )
+
+
+def _fallback_generated_answer(answer: str) -> GeneratedAnswer:
+    if answer in {AI_TIMEOUT_FALLBACK, AI_ERROR_FALLBACK}:
+        return _operational_fallback(answer)
+    return GeneratedAnswer(answer)
+
+
+def _operational_fallback(answer: str) -> GeneratedAnswer:
+    return GeneratedAnswer(answer, debug_log=False, store_in_memory=False)
 
 
 async def _chat_with_timeout(

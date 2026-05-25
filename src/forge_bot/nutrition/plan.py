@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+MEAL_OPERATOR_KEYS = ("and", "or")
+
 
 class NutritionPlanError(RuntimeError):
     """Raised when a nutrition plan document is invalid."""
@@ -63,6 +65,39 @@ def _validate_meals(meals: Mapping[str, Any]) -> None:
             raise NutritionPlanError(
                 f"Meal '{meal_key}' must include non-empty 'descripcion'."
             )
+        _validate_meal_node(meal, path=f"Meal '{meal_key}'")
+
+
+def _validate_meal_node(node: Any, *, path: str) -> None:
+    if isinstance(node, str):
+        if not node.strip():
+            raise NutritionPlanError(f"{path} cannot contain empty text options.")
+        return
+
+    if not isinstance(node, dict):
+        raise NutritionPlanError(f"{path} must be a text option or object.")
+
+    operator_keys = [key for key in MEAL_OPERATOR_KEYS if key in node]
+    if len(operator_keys) != 1:
+        raise NutritionPlanError(
+            f"{path} must include exactly one logical operator: 'and' or 'or'."
+        )
+    operator_key = operator_keys[0]
+    group = node[operator_key]
+    if not isinstance(group, list) or not group:
+        raise NutritionPlanError(
+            f"{path}.{operator_key} must be a non-empty list of options."
+        )
+
+    for metadata_key in ("condiciones", "notas", "warnings"):
+        metadata_value = node.get(metadata_key)
+        if metadata_value is not None and not _is_string_list(metadata_value):
+            raise NutritionPlanError(
+                f"{path} field '{metadata_key}' must be a string list."
+            )
+
+    for index, child in enumerate(group):
+        _validate_meal_node(child, path=f"{path}.{operator_key}[{index}]")
 
 
 def _validate_situations(

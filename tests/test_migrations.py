@@ -85,6 +85,8 @@ def test_langchain_chat_memory_migration_uses_official_history_schema() -> None:
     assert "session_id UUID NOT NULL" in contents
     assert "message JSONB NOT NULL" in contents
     assert "idx_langchain_chat_history_session_id" in contents
+    assert "ON langchain_chat_history (session_id)" in contents
+    assert "ON langchain_chat_history (session_id, id)" not in contents
     assert "CREATE TABLE IF NOT EXISTS langchain_chat_sessions" in contents
 
 
