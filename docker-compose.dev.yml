@@ -1,0 +1,9 @@
+services:
+  botforge:
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src:ro
+      - ./bot_profiles:/app/bot_profiles:ro
+      - ./migrations:/app/migrations:ro
+      - ./debug_conversations:/home/botforge/debug_conversations

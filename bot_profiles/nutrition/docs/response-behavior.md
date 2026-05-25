@@ -79,7 +79,7 @@ When no active plan exists:
 ```text
 Para ayudarte bien necesito tu plan nutricional.
 
-Puedes subirlo con /new_plan en texto o PDF.
+Envia /set_plan y despues sube situaciones.json y comidas.json como documentos.
 ```
 
 When the user asks for technical detail:

@@ -14,40 +14,46 @@ V1 storage:
 
 - `nutrition_plans`: one row per uploaded/generated plan.
 - `nutrition_plan_documents`: JSONB documents belonging to a plan.
-- `nutrition_plan_upload_sessions`: state for `/new_plan` uploads.
 
 `nutrition_plans.user_id` references `users(id)` as `INTEGER`.
 
-Plan states:
+Implemented plan states:
 
-- `draft`
 - `active`
-- `failed`
 - `archived`
 
-Upload session states:
+Reserved future plan states:
 
-- `waiting_for_plan_upload`
-- `processing`
-- `completed`
-- `cancelled`
+- `draft`
 - `failed`
-- `expired`
 
 Document types live in the database row, not necessarily inside the JSONB
 content. For V1:
 
-- `nutrition_plan_documents.document_type = meal_blocks`
-- `nutrition_plan_documents.content = compact comidas document`
+- `nutrition_plan_documents.document_type = situaciones`
+- `nutrition_plan_documents.content = {"plan_id": "...", "situaciones": {...}}`
+- `nutrition_plan_documents.document_type = comidas`
+- `nutrition_plan_documents.content = {"plan_id": "...", "comidas": {...}}`
 
-Input priority for `/new_plan`:
+Optional plan-support documents:
 
-1. Valid compact JSON with root `comidas`: validate and store directly.
-2. Pasted text: extract/generate compact `comidas`.
-3. PDF: extract text, then generate compact `comidas`.
+- `nutrition_plan_documents.document_type = reglas_adaptacion`
+- `nutrition_plan_documents.document_type = recetas`
 
-Direct JSON is the most reliable and lowest-cost path. It should bypass LLM
-generation.
+`meal_plan` is a legacy document type kept readable during the transition from
+single-document storage.
+
+Input priority for `/set_plan`:
+
+1. Attached `situaciones.json` document.
+2. Attached `comidas.json` document.
+3. Combined JSON containing both roots.
+4. Pasted JSON after `/set_plan` for small tests.
+
+Split `situaciones`/`comidas` uploads use local validation and draft storage.
+The bot asks the configured normalizer model only when a combined payload needs
+cleanup. If the model is unavailable and the input already validates, local
+validation may store it without an LLM call.
 
 ## V1 Compact Meal Blocks Document
 
@@ -510,8 +516,8 @@ operational contract:
 - after routing, the bot reads quantities only from the selected `comidas`
   block.
 
-Future persistence may split `situaciones` into a separate JSONB document, but
-the runtime contract stays the same.
+Persistence stores `situaciones` and `comidas` as separate JSONB documents. The
+runtime combines them into one `NutritionPlan` object before routing.
 
 ## recetas Document
 

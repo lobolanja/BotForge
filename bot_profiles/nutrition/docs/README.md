@@ -5,13 +5,14 @@ They are not user data.
 
 User-specific nutrition plans, extracted documents, recipes, situations, and
 adaptation rules must be stored in PostgreSQL as JSONB documents linked to each
-user. The filenames used in these docs, such as `meal_blocks.json`, describe
-document shapes, not repository files to create per user.
+user. The filenames used in these docs describe document shapes, not repository
+files to create per user.
 
-V1 should keep the plan compact: the `meal_blocks` document type stores a
-`comidas` tree with `and`/`or` groups, raw food strings, raw conditions, and raw
-notes. It should not normalize every food into a large object unless a later
-feature proves that cost is worth it.
+V1 should keep the plan compact: the active plan stores separate `situaciones`
+and `comidas` JSONB documents. `situaciones` routes day context and meal moment
+to a comida key; `comidas` keeps the `and`/`or` tree, raw food strings, raw
+conditions, macros from the plan, and notes. It should not normalize every food
+into a large object unless a later feature proves that cost is worth it.
 
 ## Product Goal
 
@@ -54,6 +55,8 @@ Example capabilities this design must support:
   quantities.
 - "Hoy tengo crossfit, que puedo comer?"
 - "Que ceno hoy si me he saltado la media manana?"
+- "Esta manana era dia de crossfit, pero al final no he ido. Ajustame la cena."
+- "Cambio crossfit por natacion, que ceno?"
 - "Hazme un plan de comidas y cenas para la semana: lunes ciclismo,
   miercoles fuerza, viernes atletismo y el resto no entreno."
 
@@ -77,6 +80,8 @@ before the model is called.
 - [User stories](user-stories.md): implementable stories grouped by MVP.
 - [Data contracts](data-contracts.md): JSONB document shapes and validation rules.
 - [Response behavior](response-behavior.md): tone, guardrails, and answer examples.
+- [Orchestration](orchestration.md): LangChain pipeline, model routing, and
+  future MCP tool boundaries.
 - [Roadmap](roadmap.md): issue order, MVP boundaries, and maintenance rules.
 - [Open considerations](open-considerations.md): nutrition safety gaps and
   product risks to keep visible.
@@ -89,20 +94,26 @@ roadmap assumption, it must update the relevant document in the same PR.
 
 ## Current Scope
 
-V1 focuses on creating a draft plan through `/new_plan`:
+V1 now focuses on setting one active user plan through `/set_plan`:
 
-- user starts `/new_plan`;
-- bot accepts compact `comidas` JSON, pasted text, or PDF;
-- bot uses valid `comidas` JSON directly when available;
-- bot extracts text only for text/PDF flows;
-- bot generates only a compact `meal_blocks` JSONB document;
-- bot validates the document minimally;
-- bot stores it as a draft plan;
-- bot replies with a short summary and warnings.
+- user sends `/set_plan`, then attaches `situaciones.json` and `comidas.json`
+  as `.json`/`.txt` files without needing captions, in either order;
+- if only one file has arrived, bot keeps a draft and tells the user which part
+  is missing;
+- a combined JSON with both roots is also accepted;
+- bot asks the configured normalization model only when a combined payload needs
+  cleanup; already-valid split files use local validation;
+- bot stores `situaciones` and `comidas` as PostgreSQL JSONB documents under
+  the user's active plan;
+- any previous active plan for that user is archived;
+- bot replies with a short summary.
+- user can run `/get_plan` for a summary or `/get_plan situaciones`,
+  `/get_plan comidas`, `/get_plan all` to export review files.
 
 Out of V1:
 
 - OCR for images;
+- PDF support;
 - full recipe generation;
 - full situation mapping;
 - recipe RAG;
@@ -110,6 +121,11 @@ Out of V1:
 - advanced plan comparison;
 - batch cooking workflows.
 
-The demo-plan phase before full persistence uses the same data shape but starts
-simpler: a repository demo plan is configured through `nutrition_plan_file`, and
-issue #94 adds a local router so only the resolved comida chunk reaches the LLM.
+The current implementation loads the active plan from PostgreSQL. Issue #95
+adds the first LangChain orchestration layer around the router. It separates
+local understanding, optional LLM normalization, plan-context selection, and
+final-answer generation so each step can use a different model or future MCP
+tool. It also introduces the first daily nutrition log in PostgreSQL: one
+editable state per user/profile/date so the bot can remember today's current
+day type, skipped meals, and logged meals without depending only on free-form
+chat memory.

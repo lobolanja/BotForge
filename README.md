@@ -86,6 +86,7 @@ NVIDIA_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
 
 BOT_PROFILE=default_dev
 BOT_PROFILES_DIR=bot_profiles
+BOT_TIMEZONE=Europe/Madrid
 
 BOOTSTRAP_ADMIN_EMAIL=
 BOOTSTRAP_BOT_USERNAME=
@@ -120,6 +121,9 @@ Notes:
 - `BOT_PROFILE` selects the active bot-specific behavior. The default
   `default_dev` profile lives in `bot_profiles/default_dev/`.
 - `BOT_PROFILES_DIR` points to the directory that contains profile folders.
+- `BOT_TIMEZONE` is the default IANA timezone used for relative dates such as
+  "today", "tomorrow", and "tonight". Set it to the main timezone of the bot's
+  users until per-user timezones exist.
 - `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_BOT_USERNAME` optionally create the
   first admin invite during Docker startup, after migrations run. Leave them
   blank to disable the bootstrap. If an admin user already exists, no invite is
@@ -142,7 +146,6 @@ bot_profiles/
   nutrition/
     profile.json
     system_prompt.md
-    demo_plan.json
     docs/
 ```
 
@@ -166,6 +169,21 @@ memory_enabled
 analytics_enabled
 ```
 
+Optional profile fields include:
+
+```text
+memory_backend
+context_files
+```
+
+`memory_backend` defaults to `postgres`. The nutrition profile currently uses
+`langchain_postgres`, which stores recent conversation turns with LangChain's
+maintained `PostgresChatMessageHistory` implementation. BotForge still owns
+account scoping, privacy deletion, and compact summaries, but raw chat history
+is handled by the LangChain PostgreSQL integration instead of BotForge-specific
+message tables. This lets each bot profile swap the prompt-facing memory
+implementation without changing Telegram routing or the LLM engine.
+
 To create a new bot profile:
 
 1. Copy `bot_profiles/default_dev/` to `bot_profiles/<new_profile_id>/`.
@@ -173,10 +191,11 @@ To create a new bot profile:
 3. Edit `system_prompt.md` with the assistant's role and behavior.
 4. Put domain-specific rules in `domain_rules`.
 5. Set `llm_provider` and `llm_model` to the provider/model the bot should use.
-6. Set `BOT_PROFILE=<new_profile_id>` in `.env`.
-7. If the profile uses Ollama and the model changed, set `OLLAMA_MODEL` to the
+6. Set `memory_enabled` and, if needed, `memory_backend`.
+7. Set `BOT_PROFILE=<new_profile_id>` in `.env`.
+8. If the profile uses Ollama and the model changed, set `OLLAMA_MODEL` to the
    same value so Compose pulls it.
-8. Restart the bot container.
+9. Restart the bot container.
 
 The built-in nutrition profile can be enabled with:
 
@@ -190,10 +209,16 @@ it helps interpret a plan provided by the user, asks for missing context before
 giving quantities, and avoids inventing diets, medical advice, macros, or JSON
 details unless the user explicitly asks.
 
-For local validation before user-level persistence exists, the nutrition profile
-uses `bot_profiles/nutrition/demo_plan.json` through `nutrition_plan_file`. The
-runtime loads that plan locally, resolves `situacion + momento` to a matching
-`comida` block, and sends only the resolved chunk to the LLM.
+Nutrition plans are user data and live in PostgreSQL, not in the repository.
+Users can send `/set_plan` and then upload `situaciones.json` and `comidas.json`
+as Telegram documents without captions; a combined JSON is also accepted. The
+bot validates the parts, stores them as the user's active plan once both are
+present, resolves
+`situacion + momento` to a matching `comida` block, and sends only the resolved
+chunk to the LLM.
+Users can run `/get_plan` for a short summary, `/get_plan situaciones` or
+`/get_plan comidas` to export the stored JSON documents, and `/get_plan all` to
+export a combined review file.
 
 The prompt assembler in `src/forge_bot/prompting.py` builds prompts in a
 deterministic order: bot system prompt and rules first, optional memory/recent
@@ -204,8 +229,10 @@ bounded recent window per internal user and bot profile. The default window keep
 the last 10 user/assistant messages. After 6 unsummarized messages are present,
 the bot asks the configured LLM to compact the oldest 5 into a durable summary
 of important dates, tastes, preferences, priorities, goals, and constraints. The
-process keeps a per-user/profile cache in memory after the first database load,
-so normal follow-up prompts do not reread the same context from PostgreSQL.
+LangChain-backed backend reads bounded database windows instead of loading the
+whole chat history for every prompt. Profiles can choose the prompt-facing
+memory backend with `memory_backend`; supported values are `postgres` and
+`langchain_postgres`. Unsupported backend names fail profile loading.
 
 ## 2. Build And Start The Stack
 
@@ -215,7 +242,13 @@ docker compose up -d --build
 
 This starts PostgreSQL, starts Ollama, pulls the configured model, and starts the
 BotForge container after the dependencies are healthy. The BotForge container
-runs database migrations before starting the Telegram polling process.
+runs database migrations before starting the Telegram polling process. The base
+Compose file stays production-like. For local bind mounts while developing, add
+the dev overlay explicitly:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
 To use a different Ollama model for this command only, set `OLLAMA_MODEL` before
 the Compose command:
@@ -373,6 +406,39 @@ MEMORY_COMPACTED_MAX_CHARS=2000
 Memory is scoped by internal `users.id` and `bot_profile_id`, not by a shared
 Telegram chat alone. Users can remove their recent and compacted memory with
 `/memory_clear`; broader account deletion also clears memory.
+
+Each profile may also set `memory_backend`:
+
+```json
+{
+  "memory_enabled": true,
+  "memory_backend": "langchain_postgres"
+}
+```
+
+Supported backends:
+
+- `postgres`: existing BotForge PostgreSQL recent-turn and compaction memory.
+- `langchain_postgres`: LangChain's maintained
+  `PostgresChatMessageHistory` PostgreSQL implementation for raw chat history,
+  plus BotForge's user/profile mapping and compact summary table.
+
+The backend is selected per bot profile, so a simple bot can keep `postgres`
+while a domain bot such as `nutrition` can opt into the LangChain adapter.
+
+For local debugging, BotForge can also write a plain-text transcript per
+user/profile. This is disabled by default and should be used only during
+development because it stores raw user and assistant text on disk:
+
+```env
+DEBUG_CONVERSATION_LOG_ENABLED=true
+DEBUG_CONVERSATION_LOG_DIR=/home/botforge/debug_conversations
+DEBUG_CONVERSATION_LOG_ALLOW_PRODUCTION=false
+```
+
+With Docker Compose, that path is mounted to `./debug_conversations/` on the
+host and ignored by git. Production startup rejects raw transcript logging
+unless `DEBUG_CONVERSATION_LOG_ALLOW_PRODUCTION=true` is set explicitly.
 
 ## 7. LLM Provider Fallback
 
@@ -778,7 +844,7 @@ You can use the same Docker stack for development:
 
 ```bash
 cp .env.example .env
-docker compose up -d postgres ollama ollama-pull
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres ollama ollama-pull
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -829,9 +895,10 @@ RUN_LIVE_NVIDIA_TESTS=1 python -m pytest tests/test_nutrition_live_nvidia.py
 
 ## Current Limitations
 
-- Conversation memory is bounded to the latest configured raw messages plus a
-  compacted summary. It is not vector search and does not retrieve arbitrary old
-  facts beyond what was compacted.
+- Conversation memory is pluggable per bot profile, but the current storage is
+  still bounded to the latest configured raw messages plus a compacted summary.
+  It is not vector search and does not retrieve arbitrary old facts beyond what
+  was compacted.
 - Telegram updates that were never delivered to the bot and are older than
   Telegram's pending-update retention window cannot be recovered.
 - Provider/model selection is profile-driven by default. `default_dev` uses

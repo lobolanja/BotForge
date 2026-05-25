@@ -17,14 +17,14 @@ Flow:
 3. Bot checks whether the user has an active nutrition plan.
 4. No active plan exists.
 5. Bot explains briefly that it needs the user's plan from their nutritionist.
-6. Bot suggests `/new_plan`.
+6. Bot suggests `/set_plan`.
 
 Expected response:
 
 ```text
 Para ayudarte bien necesito tu plan nutricional.
 
-Puedes subirlo con /new_plan en texto o PDF.
+Envia /set_plan y despues sube situaciones.json y comidas.json como documentos.
 ```
 
 Edge cases:
@@ -34,49 +34,48 @@ Edge cases:
 - If the user mentions a medical condition, the bot should recommend checking
   with a qualified professional.
 
-## Journey 2: Create A Draft Plan With /new_plan
+## Journey 2: Set An Active Plan With /set_plan
 
 Actor: authenticated Telegram user.
 
-Goal: upload or paste a nutrition plan and convert it into `meal_blocks`.
+Goal: upload `situaciones.json` and `comidas.json` and store them as the active
+user plan.
 
 Flow:
 
-1. User sends `/new_plan`.
-2. Bot creates or refreshes a `waiting_for_plan_upload` session.
-3. Bot asks the user to send compact `comidas` JSON, paste plan text, or upload
-   a PDF.
-4. User sends JSON, text, or a PDF document.
-5. If the input is valid `comidas` JSON, bot skips LLM extraction.
-6. If the input is text/PDF, bot extracts readable text.
-7. For text/PDF only, bot asks the LLM to generate compact `meal_blocks`,
-   preserving nested `and`/`or` groups from the source plan.
-8. Bot validates the JSON.
-9. Bot stores a new `nutrition_plan` in `draft` status.
-10. Bot stores `nutrition_plan_documents.document_type = meal_blocks`.
-11. Bot replies with a summary.
+1. User sends `/set_plan`.
+2. Bot explains that the user can upload `situaciones.json` and `comidas.json`
+   without captions.
+3. User attaches `situaciones.json`.
+4. Bot stores that part in a draft and replies that `comidas` is missing.
+5. User attaches `comidas.json`.
+6. Bot combines both parts and validates situations, meal references, meal
+   blocks, and nested `and`/`or` groups.
+7. Bot archives any previous active plan for that user.
+8. Bot stores the new `nutrition_plan` in `active` status.
+9. Bot stores `nutrition_plan_documents.document_type = situaciones` and
+   `document_type = comidas`.
+10. Bot replies with a short summary.
 
 Expected response:
 
 ```text
-Plan creado en borrador.
+Plan nutricional activo actualizado.
 
 He detectado:
 - 6 bloques de comida
-- 58 opciones alimentarias
-- 8 condiciones
-- 4 avisos de revision
-
-Estado: draft
+- 3 situaciones
+- normalizacion: LLM
 ```
 
 Edge cases:
 
-- Unsupported file: explain that V1 accepts `comidas` JSON, text, or PDF.
-- Unreadable PDF: ask the user to paste text or upload a clearer PDF.
-- Partial extraction: save draft if valid blocks exist and include warnings.
-- No blocks detected: mark the session failed and ask for a better source.
-- Existing active plan: create a new draft without overwriting the active plan.
+- Unsupported file: explain that V1 accepts `.json` or `.txt`.
+- Only one part uploaded: keep the draft and ask for the missing file.
+- Invalid JSON and no LLM normalization: ask the user to send valid JSON.
+- Invalid references: reject the plan and explain that a situation points to a
+  missing meal block.
+- Existing active plan: archive it only after the new plan validates.
 
 ## Journey 3: Review Generated Plan Summary
 
@@ -86,10 +85,10 @@ Goal: inspect whether extraction looks reasonable.
 
 Flow:
 
-1. Bot finishes `/new_plan`.
+1. Bot finishes `/set_plan`.
 2. Bot shows a summary of extracted blocks.
 3. User reviews block names, macro hints, warnings, and option counts.
-4. User decides whether to activate later, upload a new version, or wait.
+4. User decides whether to keep it active or upload a corrected version.
 
 Expected response:
 
@@ -111,37 +110,37 @@ Avisos:
 
 Edge cases:
 
-- No draft exists: suggest `/new_plan`.
-- Critical warnings: recommend uploading a clearer document before activation.
-- Non-critical warnings: allow later activation with warning.
+- No active plan exists: suggest `/set_plan`.
+- Critical validation errors: do not store the plan.
+- Non-critical warnings: store the plan if the core routing is valid.
 
-## Journey 4: Activate A Draft Plan
+## Journey 4: Replace The Active Plan
 
 Actor: authenticated Telegram user.
 
-Goal: select a draft plan as the active source of truth.
+Goal: replace an active plan without leaving the user with a broken plan.
 
 Flow:
 
-1. User asks to activate the generated plan.
-2. Bot finds the latest draft owned by the user.
-3. Bot validates that it contains valid `meal_blocks`.
-4. Bot deactivates or archives previous active plans for the same user.
-5. Bot marks the selected plan as `active`.
+1. User already has an active plan.
+2. User sends a new JSON plan with `/set_plan`.
+3. Bot validates and normalizes the new plan.
+4. Bot archives the previous active plan.
+5. Bot marks the new plan as `active`.
 6. Bot confirms the change.
 
 Expected response:
 
 ```text
-Plan activado.
+Plan nutricional activo actualizado.
 
 A partir de ahora usare este plan para interpretar tus comidas.
 ```
 
 Edge cases:
 
-- No draft: suggest `/new_plan`.
-- Draft has no valid blocks: do not activate.
+- No active plan: suggest `/set_plan`.
+- New upload has no valid blocks: keep the previous active plan.
 - Existing active plan: replace it only for the same user.
 
 ## Journey 5: Ask What To Eat
@@ -188,7 +187,7 @@ Edge cases:
   activity.
 - Multiple day situations detected: ask the user which one should drive the
   plan for this meal.
-- No active plan: suggest `/new_plan`.
+- No active plan: suggest `/set_plan`.
 - Missing mapping: do not invent a comida.
 - Complete mapping: do not send the full plan to the LLM; send only the
   resolved chunk.
