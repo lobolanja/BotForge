@@ -144,6 +144,11 @@ def authorize_user(monkeypatch: pytest.MonkeyPatch) -> None:
 def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(router, "abuse_limiter", AbuseLimiter(make_settings))
     monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(
+        router,
+        "append_debug_conversation_turn",
+        lambda turn: True,
+    )
 
 
 @pytest.mark.asyncio
