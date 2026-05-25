@@ -78,8 +78,7 @@ def _memory_content(
         "- Do not say you have no memory or no access to previous messages when "
         "the relevant information appears below.\n"
         "- If the answer is not present below, say that you do not have that "
-        "specific previous detail available.\n\n"
-        + "\n\n".join(sections)
+        "specific previous detail available.\n\n" + "\n\n".join(sections)
     )
 
 

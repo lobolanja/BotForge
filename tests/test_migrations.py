@@ -91,9 +91,7 @@ def test_langchain_chat_memory_migration_uses_official_history_schema() -> None:
 
 
 def test_nutrition_daily_logs_migration_tracks_editable_day_state() -> None:
-    migration = Path(
-        "migrations/versions/20260524_0010_create_nutrition_daily_logs.py"
-    )
+    migration = Path("migrations/versions/20260524_0010_create_nutrition_daily_logs.py")
 
     contents = migration.read_text()
 

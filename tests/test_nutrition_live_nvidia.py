@@ -13,6 +13,7 @@ pytestmark = pytest.mark.skipif(
     reason="live NVIDIA tests are opt-in; set RUN_LIVE_NVIDIA_TESTS=1",
 )
 
+
 def _nvidia_provider() -> tuple[NvidiaNimProvider, str]:
     load_dotenv(Path(".env"))
     api_key = os.getenv("NVIDIA_API_KEY", "").strip()

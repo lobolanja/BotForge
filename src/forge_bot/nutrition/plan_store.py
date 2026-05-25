@@ -285,9 +285,7 @@ def save_nutrition_plan_part(
                     plan_uuid=plan_uuid,
                     user_id=user_id,
                     document_type=document_type,
-                    missing_document_types=_missing_required_documents(
-                        draft_documents
-                    ),
+                    missing_document_types=_missing_required_documents(draft_documents),
                 )
 
             plan = parse_nutrition_plan(combined)

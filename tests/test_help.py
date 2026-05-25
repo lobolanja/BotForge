@@ -34,11 +34,13 @@ async def test_help_hides_admin_invite_for_non_admin(
     assert "/privacy - Review stored data and controls." in update.message.replies[0]
     assert "/memory_clear - Clear personalization memory." in update.message.replies[0]
     assert "/delete_my_data - Start data deletion." in update.message.replies[0]
-    assert "/set_plan - Upload your nutrition plan JSON files." in (
-        update.message.replies[0]
+    assert (
+        "/set_plan - Upload your nutrition plan JSON files."
+        in (update.message.replies[0])
     )
-    assert "/get_plan - Review or export your active nutrition plan." in (
-        update.message.replies[0]
+    assert (
+        "/get_plan - Review or export your active nutrition plan."
+        in (update.message.replies[0])
     )
     assert "/invite" not in update.message.replies[0]
 
@@ -52,8 +54,9 @@ async def test_help_shows_admin_invite_shape(monkeypatch: pytest.MonkeyPatch) ->
 
     assert "/invite <role> <email>" in update.message.replies[0]
     assert "/admin_users [limit]" in update.message.replies[0]
-    assert "/admin_memory <user_id|tg:telegram_id|email:value|username:value>" in (
-        update.message.replies[0]
+    assert (
+        "/admin_memory <user_id|tg:telegram_id|email:value|username:value>"
+        in (update.message.replies[0])
     )
     assert (
         "/campaign_invite <role> <expires_at> <max_uses>" in update.message.replies[0]

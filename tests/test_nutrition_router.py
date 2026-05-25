@@ -55,9 +55,7 @@ def test_plan_validation_rejects_missing_meal_reference() -> None:
                         "momentos": {"almuerzo": "comida_missing"},
                     }
                 },
-                "comidas": {
-                    "comida_1": {"descripcion": "ok", "and": ["25g whey"]}
-                },
+                "comidas": {"comida_1": {"descripcion": "ok", "and": ["25g whey"]}},
             }
         )
 
@@ -75,9 +73,7 @@ def test_plan_validation_rejects_invalid_moment_aliases() -> None:
                         "momentos": {"almuerzo": "comida_1"},
                     }
                 },
-                "comidas": {
-                    "comida_1": {"descripcion": "ok", "and": ["25g whey"]}
-                },
+                "comidas": {"comida_1": {"descripcion": "ok", "and": ["25g whey"]}},
             }
         )
 

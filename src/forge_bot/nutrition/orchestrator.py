@@ -1076,9 +1076,7 @@ def _available_situation_labels(
     for situation_key, situation in situations.items():
         label = situation.get("label")
         labels.append(
-            label.strip()
-            if isinstance(label, str) and label.strip()
-            else situation_key
+            label.strip() if isinstance(label, str) and label.strip() else situation_key
         )
     return tuple(labels)
 

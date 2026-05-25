@@ -53,10 +53,7 @@ class DailyNutritionUpdate:
     @property
     def has_changes(self) -> bool:
         return bool(
-            self.situation_key
-            or self.logged_meals
-            or self.skipped_moments
-            or self.note
+            self.situation_key or self.logged_meals or self.skipped_moments or self.note
         )
 
 

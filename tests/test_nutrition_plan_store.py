@@ -113,9 +113,7 @@ def test_save_active_nutrition_plan_archives_previous_and_inserts_document(
         if "INSERT INTO nutrition_plan_documents" in statement
     )
     document_types = [
-        params[1]
-        for params in connection.cursor_obj.params
-        if len(params) == 3
+        params[1] for params in connection.cursor_obj.params if len(params) == 3
     ]
     assert document_insert_count == 4
     assert "situaciones" in document_types

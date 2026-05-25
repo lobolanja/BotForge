@@ -262,9 +262,7 @@ def _load_context_documents(
                 f"Bot profile context file '{item.strip()}' is too large "
                 f"({len(content)} chars; max {MAX_CONTEXT_DOCUMENT_CHARS})."
             )
-        documents.append(
-            BotProfileContextDocument(name=item.strip(), content=content)
-        )
+        documents.append(BotProfileContextDocument(name=item.strip(), content=content))
     return tuple(documents)
 
 

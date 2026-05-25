@@ -160,11 +160,7 @@ async def set_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def _read_plan_document(document: Document) -> str | dict[str, str]:
     filename = document.file_name or "plan"
     if not _is_supported_document(document):
-        return {
-            "message": (
-                "Sube un fichero .json o .txt con situaciones o comidas."
-            )
-        }
+        return {"message": ("Sube un fichero .json o .txt con situaciones o comidas.")}
     if document.file_size and document.file_size > MAX_PLAN_UPLOAD_BYTES:
         return {
             "message": (

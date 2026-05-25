@@ -174,15 +174,13 @@ async def test_set_plan_accepts_partial_situations_json(
         "/set_plan "
         + json.dumps(
             {
-                "momentos": {
-                    "cena": {"label": "Cena", "aliases": ["cena", "noche"]}
-                },
+                "momentos": {"cena": {"label": "Cena", "aliases": ["cena", "noche"]}},
                 "situaciones": {
                     "no_entreno": {
                         "momentos": {"cena": "comida_1"},
                         "suplementacion": [],
                     }
-                }
+                },
             }
         )
     )

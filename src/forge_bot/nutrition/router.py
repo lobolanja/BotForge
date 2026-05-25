@@ -122,9 +122,7 @@ def detect_moments(plan: NutritionPlan, message: str) -> tuple[MomentMatch, ...]
     matches: list[MomentMatch] = []
     for moment_key, aliases in _moment_aliases(plan).items():
         matched = tuple(
-            alias
-            for alias in aliases
-            if _contains_alias(normalized_message, alias)
+            alias for alias in aliases if _contains_alias(normalized_message, alias)
         )
         if matched:
             matches.append(MomentMatch(key=moment_key, matched_aliases=matched))

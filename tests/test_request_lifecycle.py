@@ -143,6 +143,7 @@ def authorize_user(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(router, "abuse_limiter", AbuseLimiter(make_settings))
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
 
 
 @pytest.mark.asyncio
@@ -346,9 +347,7 @@ async def test_nvidia_profile_streams_drafts_before_final_answer(
     await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=bot)))
 
     streamed_drafts = [
-        draft["text"]
-        for draft in bot.drafts
-        if draft["text"] not in {".", "..", "..."}
+        draft["text"] for draft in bot.drafts if draft["text"] not in {".", "..", "..."}
     ]
     assert streamed_drafts == [
         "preparando",
@@ -565,9 +564,7 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
     memory_backend = FakeMemoryBackend()
     memory_backend.context = SimpleNamespace(
         compacted_user_memory="Prefers vegetarian dinners.",
-        recent_conversation_messages=[
-            {"role": "user", "content": "I am vegetarian."}
-        ],
+        recent_conversation_messages=[{"role": "user", "content": "I am vegetarian."}],
     )
 
     monkeypatch.setattr(router, "request_state", state)
