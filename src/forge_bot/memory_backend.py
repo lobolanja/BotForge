@@ -16,6 +16,7 @@ from langchain_core.messages import (
     messages_from_dict,
 )
 from langchain_postgres import PostgresChatMessageHistory
+from psycopg import sql
 
 from .bot_profile import SUPPORTED_MEMORY_BACKENDS, BotProfile, BotProfileError
 from .config import get_settings
@@ -355,14 +356,17 @@ class LangChainPostgresMemoryBackend(PostgresMemoryBackend):
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    f"""
+                    sql.SQL("""
                     SELECT message
-                    FROM {LANGCHAIN_CHAT_HISTORY_TABLE}
+                    FROM {}
                     WHERE session_id = %s
-                    ORDER BY id {order}
+                    ORDER BY id {}
                     LIMIT %s
                     OFFSET %s
-                    """,
+                    """).format(
+                        sql.Identifier(LANGCHAIN_CHAT_HISTORY_TABLE),
+                        sql.SQL(order),
+                    ),
                     (session_id, limit, offset),
                 )
                 rows = cursor.fetchall()
@@ -429,8 +433,8 @@ class LangChainPostgresMemoryBackend(PostgresMemoryBackend):
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    f"""
-                    INSERT INTO {LANGCHAIN_CHAT_SESSIONS_TABLE} (
+                    sql.SQL("""
+                    INSERT INTO {} (
                         user_id,
                         bot_profile_id,
                         session_id
@@ -440,7 +444,7 @@ class LangChainPostgresMemoryBackend(PostgresMemoryBackend):
                     DO UPDATE SET
                         session_id = EXCLUDED.session_id,
                         updated_at = CURRENT_TIMESTAMP
-                    """,
+                    """).format(sql.Identifier(LANGCHAIN_CHAT_SESSIONS_TABLE)),
                     (
                         user_id,
                         bot_profile_id,
