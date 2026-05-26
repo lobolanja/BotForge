@@ -3,7 +3,10 @@ import time as time_module
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from .auth_guard import require_login
 
+
+@require_login
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return

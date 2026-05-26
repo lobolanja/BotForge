@@ -7,10 +7,20 @@ from pathlib import Path
 from typing import Any
 
 PROFILE_FILE_NAME = "profile.json"
+MAX_CONTEXT_DOCUMENT_CHARS = 120_000
+SUPPORTED_MEMORY_BACKENDS = frozenset({"postgres", "langchain_postgres"})
 
 
 class BotProfileError(RuntimeError):
     """Raised when a bot profile cannot be loaded or validated."""
+
+
+@dataclass(frozen=True)
+class BotProfileContextDocument:
+    """Read-only context bundled with one bot profile."""
+
+    name: str
+    content: str
 
 
 @dataclass(frozen=True)
@@ -31,7 +41,10 @@ class BotProfile:
     llm_provider: str
     llm_model: str
     memory_enabled: bool
+    memory_backend: str
     analytics_enabled: bool
+    context_documents: tuple[BotProfileContextDocument, ...] = ()
+    nutrition_plan_path: Path | None = None
 
 
 def load_active_bot_profile(
@@ -95,7 +108,14 @@ def load_bot_profile(
         llm_provider=_required_text(data, "llm_provider"),
         llm_model=_required_text(data, "llm_model"),
         memory_enabled=_required_bool(data, "memory_enabled"),
+        memory_backend=_memory_backend(data),
         analytics_enabled=_required_bool(data, "analytics_enabled"),
+        context_documents=_load_context_documents(data, profile_root),
+        nutrition_plan_path=_optional_profile_file(
+            data,
+            profile_root,
+            "nutrition_plan_file",
+        ),
     )
 
 
@@ -124,6 +144,27 @@ def _required_text(data: Mapping[str, Any], field: str) -> str:
             f"Bot profile field '{field}' must be a non-empty string."
         )
     return value.strip()
+
+
+def _optional_text(data: Mapping[str, Any], field: str, *, default: str) -> str:
+    value = data.get(field)
+    if value is None:
+        return default
+    if not isinstance(value, str) or not value.strip():
+        raise BotProfileError(
+            f"Bot profile field '{field}' must be a non-empty string when set."
+        )
+    return value.strip()
+
+
+def _memory_backend(data: Mapping[str, Any]) -> str:
+    backend = _optional_text(data, "memory_backend", default="postgres").lower()
+    if backend not in SUPPORTED_MEMORY_BACKENDS:
+        options = ", ".join(sorted(SUPPORTED_MEMORY_BACKENDS))
+        raise BotProfileError(
+            f"Bot profile field 'memory_backend' must be one of: {options}."
+        )
+    return backend
 
 
 def _required_bool(data: Mapping[str, Any], field: str) -> bool:
@@ -183,3 +224,79 @@ def _load_system_prompt(
             f"System prompt file for bot profile '{profile_id}' must not be empty."
         )
     return prompt
+
+
+def _load_context_documents(
+    data: Mapping[str, Any],
+    profile_root: Path,
+) -> tuple[BotProfileContextDocument, ...]:
+    """Load optional profile context files declared in profile.json."""
+    value = data.get("context_files", [])
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise BotProfileError(
+            "Bot profile field 'context_files' must be a list of relative paths."
+        )
+
+    documents: list[BotProfileContextDocument] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, str) or not item.strip():
+            raise BotProfileError(
+                "Bot profile field 'context_files' must contain only non-empty "
+                f"strings; item {index} is invalid."
+            )
+        context_path = _resolve_profile_file(profile_root, item.strip())
+        if not context_path.is_file():
+            raise BotProfileError(
+                f"Bot profile context file was not found at {context_path}."
+            )
+
+        content = context_path.read_text(encoding="utf-8").strip()
+        if not content:
+            raise BotProfileError(
+                f"Bot profile context file '{item.strip()}' must not be empty."
+            )
+        if len(content) > MAX_CONTEXT_DOCUMENT_CHARS:
+            raise BotProfileError(
+                f"Bot profile context file '{item.strip()}' is too large "
+                f"({len(content)} chars; max {MAX_CONTEXT_DOCUMENT_CHARS})."
+            )
+        documents.append(BotProfileContextDocument(name=item.strip(), content=content))
+    return tuple(documents)
+
+
+def _resolve_profile_file(profile_root: Path, relative_path: str) -> Path:
+    """Resolve a profile file while preventing accidental path traversal."""
+    path = Path(relative_path)
+    if path.is_absolute():
+        raise BotProfileError("Bot profile context files must use relative paths.")
+
+    profile_root_resolved = profile_root.resolve()
+    resolved = (profile_root / path).resolve()
+    if resolved != profile_root_resolved and profile_root_resolved not in (
+        resolved.parents
+    ):
+        raise BotProfileError(
+            "Bot profile context files must stay inside the profile folder."
+        )
+    return resolved
+
+
+def _optional_profile_file(
+    data: Mapping[str, Any],
+    profile_root: Path,
+    field: str,
+) -> Path | None:
+    value = data.get(field)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise BotProfileError(f"Bot profile field '{field}' must be a string.")
+
+    resolved = _resolve_profile_file(profile_root, value.strip())
+    if not resolved.is_file():
+        raise BotProfileError(
+            f"Bot profile file configured by '{field}' was not found at {resolved}."
+        )
+    return resolved

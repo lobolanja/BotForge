@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, cast
@@ -26,9 +27,28 @@ class FakeMessage:
 class FakeBot:
     def __init__(self) -> None:
         self.chat_actions: list[tuple[int, str]] = []
+        self.drafts: list[dict[str, object]] = []
 
     async def send_chat_action(self, *, chat_id: int, action: str) -> None:
         self.chat_actions.append((chat_id, action))
+
+    async def send_message_draft(
+        self,
+        *,
+        chat_id: int,
+        draft_id: int,
+        text: str,
+        parse_mode: str | None = None,
+    ) -> bool:
+        self.drafts.append(
+            {
+                "chat_id": chat_id,
+                "draft_id": draft_id,
+                "text": text,
+                "parse_mode": parse_mode,
+            }
+        )
+        return True
 
 
 def fake_profile() -> BotProfile:
@@ -43,6 +63,7 @@ def fake_profile() -> BotProfile:
         llm_provider="ollama",
         llm_model="test-model",
         memory_enabled=False,
+        memory_backend="postgres",
         analytics_enabled=False,
     )
 
@@ -59,8 +80,46 @@ def fake_memory_profile() -> BotProfile:
         llm_provider="ollama",
         llm_model="test-model",
         memory_enabled=True,
+        memory_backend="postgres",
         analytics_enabled=False,
     )
+
+
+def fake_nvidia_profile() -> BotProfile:
+    return BotProfile(
+        bot_profile_id="nutrition",
+        bot_display_name="BotForge",
+        bot_description="Test profile",
+        system_prompt="Be helpful.",
+        domain_rules=("Do not leak secrets.",),
+        disclaimer_text="Test only.",
+        default_language="en",
+        llm_provider="nvidia",
+        llm_model="nvidia/test-model",
+        memory_enabled=False,
+        memory_backend="postgres",
+        analytics_enabled=False,
+    )
+
+
+class FakeMemoryBackend:
+    def __init__(self) -> None:
+        self.context = SimpleNamespace(
+            compacted_user_memory=None,
+            recent_conversation_messages=[],
+        )
+        self.stored_turns: list[dict[str, object]] = []
+
+    def get_context(self, **kwargs: object) -> SimpleNamespace:
+        del kwargs
+        return self.context
+
+    def store_successful_turn(self, **kwargs: object) -> bool:
+        self.stored_turns.append(kwargs)
+        return True
+
+    async def compact_memory_if_needed(self, **kwargs: object) -> None:
+        del kwargs
 
 
 def fake_update(*, update_id: int = 1001, text: str = "hello") -> SimpleNamespace:
@@ -84,6 +143,13 @@ def authorize_user(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def default_abuse_limiter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(router, "abuse_limiter", AbuseLimiter(make_settings))
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(router, "get_user_by_telegram_id", lambda telegram_id: None)
+    monkeypatch.setattr(
+        router,
+        "append_debug_conversation_turn",
+        lambda turn: True,
+    )
 
 
 @pytest.mark.asyncio
@@ -203,6 +269,249 @@ async def test_request_state_is_cleared_after_success(
 
 
 @pytest.mark.asyncio
+async def test_slow_ai_response_sends_progress_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(router, "PROCESSING_NOTICE_INITIAL_DELAY_SECONDS", 0.01)
+    monkeypatch.setattr(router, "PROCESSING_NOTICE_INTERVAL_SECONDS", 10)
+    update = fake_update(update_id=30032)
+
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_profile)
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        await asyncio.sleep(0.02)
+        return "done"
+
+    monkeypatch.setattr(engine, "answer", answer)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == [router.PROCESSING_NOTICE_MESSAGE, "done"]
+
+
+@pytest.mark.asyncio
+async def test_nvidia_profile_streams_drafts_before_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    bot = FakeBot()
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(router, "STREAM_DRAFT_UPDATE_INTERVAL_SECONDS", 0)
+    update = fake_update(update_id=30034)
+
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_nvidia_profile)
+
+    async def answer_stream(
+        user: str,
+        msg: str,
+        *,
+        on_partial: Any,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        await on_partial("preparando")
+        await on_partial("preparando cena")
+        return "cena lista"
+
+    monkeypatch.setattr(engine, "answer_stream", answer_stream)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=bot)))
+
+    streamed_drafts = [
+        draft["text"] for draft in bot.drafts if draft["text"] not in {".", "..", "..."}
+    ]
+    assert streamed_drafts == [
+        "preparando",
+        "preparando cena",
+    ]
+    assert bot.drafts[0]["draft_id"] == 30034
+    assert update.message.replies == ["cena lista"]
+
+
+@pytest.mark.asyncio
+async def test_streaming_profile_shows_loading_dots_before_first_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    bot = FakeBot()
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(router, "STREAM_LOADING_DRAFT_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(router, "STREAM_DRAFT_UPDATE_INTERVAL_SECONDS", 0)
+    update = fake_update(update_id=30035)
+
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_nvidia_profile)
+
+    async def answer_stream(
+        user: str,
+        msg: str,
+        *,
+        on_partial: Any,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        await asyncio.sleep(0.035)
+        await on_partial("respuesta parcial")
+        return "respuesta final"
+
+    monkeypatch.setattr(engine, "answer_stream", answer_stream)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=bot)))
+
+    draft_texts = [draft["text"] for draft in bot.drafts]
+    assert draft_texts[:3] == [".", "..", "..."]
+    assert "respuesta parcial" in draft_texts
+    assert update.message.replies == ["respuesta final"]
+
+
+@pytest.mark.asyncio
+async def test_very_slow_ai_response_sends_repeated_progress_notices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(router, "PROCESSING_NOTICE_INITIAL_DELAY_SECONDS", 0.01)
+    monkeypatch.setattr(router, "PROCESSING_NOTICE_INTERVAL_SECONDS", 0.01)
+    update = fake_update(update_id=30033)
+
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_profile)
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        await asyncio.sleep(0.035)
+        return "done"
+
+    monkeypatch.setattr(engine, "answer", answer)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies[:2] == [
+        router.PROCESSING_NOTICE_MESSAGE,
+        router.PROCESSING_NOTICE_REPEAT_MESSAGE,
+    ]
+    assert update.message.replies[-1] == "done"
+
+
+@pytest.mark.asyncio
+async def test_successful_turn_is_offered_to_debug_conversation_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    update = fake_update(update_id=30031, text="Que ceno?")
+    debug_turns: list[object] = []
+
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"id": 91, "status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"id": 91, "status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_profile)
+    monkeypatch.setattr(
+        router,
+        "append_debug_conversation_turn",
+        lambda turn: debug_turns.append(turn) or True,
+    )
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        return "Merluza con verduras."
+
+    monkeypatch.setattr(engine, "answer", answer)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == ["Merluza con verduras."]
+    assert len(debug_turns) == 1
+    turn = debug_turns[0]
+    assert turn.bot_profile_id == "default_dev"
+    assert turn.telegram_user_id == 123
+    assert turn.telegram_chat_id == 456
+    assert turn.inbound_message_id == 91
+    assert turn.user_message == "Que ceno?"
+    assert turn.assistant_message == "Merluza con verduras."
+
+
+@pytest.mark.asyncio
 async def test_engine_receives_wait_time_after_global_ai_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -258,7 +567,11 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
     state = UserRequestState()
     update = fake_update(update_id=3005)
     answer_kwargs: list[dict[str, object]] = []
-    stored_turns: list[dict[str, object]] = []
+    memory_backend = FakeMemoryBackend()
+    memory_backend.context = SimpleNamespace(
+        compacted_user_memory="Prefers vegetarian dinners.",
+        recent_conversation_messages=[{"role": "user", "content": "I am vegetarian."}],
+    )
 
     monkeypatch.setattr(router, "request_state", state)
     monkeypatch.setattr(
@@ -282,13 +595,8 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
     )
     monkeypatch.setattr(
         router,
-        "get_memory_context",
-        lambda **kwargs: SimpleNamespace(
-            compacted_user_memory="Prefers vegetarian dinners.",
-            recent_conversation_messages=[
-                {"role": "user", "content": "I am vegetarian."}
-            ],
-        ),
+        "memory_backend_for_profile",
+        lambda profile: memory_backend,
     )
 
     async def answer(
@@ -301,16 +609,12 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
         answer_kwargs.append(kwargs)
         return "try a vegetable stew"
 
-    async def store_turn(**kwargs: object) -> None:
-        stored_turns.append(kwargs)
-
     monkeypatch.setattr(engine, "answer", answer)
-    monkeypatch.setattr(
-        router,
-        "store_successful_turn",
-        lambda **kwargs: stored_turns.append(kwargs) or True,
-    )
-    monkeypatch.setattr(router, "_compact_successful_turn", store_turn)
+
+    async def compact_turn(**kwargs: object) -> None:
+        del kwargs
+
+    monkeypatch.setattr(router, "_compact_successful_turn", compact_turn)
 
     await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
 
@@ -319,10 +623,82 @@ async def test_memory_context_is_sent_to_engine_and_turn_is_stored(
     assert answer_kwargs[0]["recent_conversation_messages"] == [
         {"role": "user", "content": "I am vegetarian."}
     ]
-    assert stored_turns[0]["user_id"] == 777
-    assert stored_turns[0]["bot_profile_id"] == "default_dev"
-    assert stored_turns[0]["user_message"] == "hello"
-    assert stored_turns[0]["assistant_message"] == "try a vegetable stew"
+    assert answer_kwargs[0]["internal_user_id"] == 777
+    assert memory_backend.stored_turns[0]["user_id"] == 777
+    assert memory_backend.stored_turns[0]["bot_profile_id"] == "default_dev"
+    assert memory_backend.stored_turns[0]["user_message"] == "hello"
+    assert memory_backend.stored_turns[0]["assistant_message"] == (
+        "try a vegetable stew"
+    )
+
+
+@pytest.mark.asyncio
+async def test_operational_fallback_is_not_stored_as_memory_or_debug(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authorize_user(monkeypatch)
+    state = UserRequestState()
+    update = fake_update(update_id=30051)
+    memory_backend = FakeMemoryBackend()
+    debug_turns: list[object] = []
+    compacted: list[object] = []
+
+    monkeypatch.setattr(router, "request_state", state)
+    monkeypatch.setattr(
+        router,
+        "persist_update",
+        lambda update: {"id": 57, "status": "persisted"},
+    )
+    monkeypatch.setattr(router, "mark_queued", lambda update_id: {"status": "queued"})
+    monkeypatch.setattr(
+        router,
+        "mark_processing",
+        lambda update_id: {"id": 57, "status": "processing"},
+    )
+    monkeypatch.setattr(router, "mark_answered", lambda update_id: None)
+    monkeypatch.setattr(engine, "load_default_profile", fake_memory_profile)
+    monkeypatch.setattr(router, "get_settings", lambda: make_settings())
+    monkeypatch.setattr(
+        router,
+        "get_user_by_telegram_id",
+        lambda telegram_id: {"id": 777, "username": "ada"},
+    )
+    monkeypatch.setattr(
+        router,
+        "memory_backend_for_profile",
+        lambda profile: memory_backend,
+    )
+    monkeypatch.setattr(
+        router,
+        "append_debug_conversation_turn",
+        lambda turn: debug_turns.append(turn) or True,
+    )
+
+    async def answer(
+        user: str,
+        msg: str,
+        profile: BotProfile | None = None,
+        **kwargs: object,
+    ) -> str:
+        del user, msg, profile, kwargs
+        return engine.GeneratedAnswer(
+            engine.AI_TIMEOUT_FALLBACK,
+            debug_log=False,
+            store_in_memory=False,
+        )
+
+    async def compact_turn(**kwargs: object) -> None:
+        compacted.append(kwargs)
+
+    monkeypatch.setattr(engine, "answer", answer)
+    monkeypatch.setattr(router, "_compact_successful_turn", compact_turn)
+
+    await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))
+
+    assert update.message.replies == [engine.AI_TIMEOUT_FALLBACK]
+    assert debug_turns == []
+    assert memory_backend.stored_turns == []
+    assert compacted == []
 
 
 @pytest.mark.asyncio
@@ -333,6 +709,7 @@ async def test_memory_compaction_runs_after_ai_lease_release(
     state = UserRequestState()
     update = fake_update(update_id=3006)
     events: list[str] = []
+    memory_backend = FakeMemoryBackend()
 
     class FakeLease:
         def __init__(self) -> None:
@@ -389,11 +766,8 @@ async def test_memory_compaction_runs_after_ai_lease_release(
     )
     monkeypatch.setattr(
         router,
-        "get_memory_context",
-        lambda **kwargs: SimpleNamespace(
-            compacted_user_memory=None,
-            recent_conversation_messages=[],
-        ),
+        "memory_backend_for_profile",
+        lambda profile: memory_backend,
     )
 
     async def answer(
@@ -412,7 +786,6 @@ async def test_memory_compaction_runs_after_ai_lease_release(
         events.append("compact")
 
     monkeypatch.setattr(engine, "answer", answer)
-    monkeypatch.setattr(router, "store_successful_turn", lambda **kwargs: True)
     monkeypatch.setattr(router, "_compact_successful_turn", compact_turn)
 
     await router.ask_ia(cast(Any, update), cast(Any, SimpleNamespace(bot=FakeBot())))

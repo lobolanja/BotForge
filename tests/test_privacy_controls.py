@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from forge_bot.commands import auth_guard
 from forge_bot.commands.privacy import delete_my_data, memory_clear, privacy
 from forge_bot.database import MemoryClearResult, UserDeletionResult
 
@@ -26,9 +27,26 @@ def create_context(args: list[str] | None = None) -> Any:
     return SimpleNamespace(args=args or [])
 
 
+def allow_linked_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: True)
+
+
 @pytest.mark.asyncio
-async def test_privacy_returns_data_categories_and_controls() -> None:
+async def test_privacy_requires_linked_user(monkeypatch: pytest.MonkeyPatch) -> None:
     update = create_update()
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: False)
+
+    await privacy(update, create_context())
+
+    assert update.message.replies == [auth_guard.INVITE_REQUIRED_MESSAGE]
+
+
+@pytest.mark.asyncio
+async def test_privacy_returns_data_categories_and_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    update = create_update()
+    allow_linked_user(monkeypatch)
 
     await privacy(update, create_context())
 
@@ -47,6 +65,7 @@ async def test_memory_clear_clears_linked_user_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update(user_id=456)
+    allow_linked_user(monkeypatch)
     calls: list[int] = []
 
     def clear_memory_for_telegram_user(telegram_id: int) -> MemoryClearResult:
@@ -71,6 +90,7 @@ async def test_memory_clear_reports_unlinked_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update()
+    allow_linked_user(monkeypatch)
     monkeypatch.setattr(
         "forge_bot.commands.privacy.clear_memory_for_telegram_user",
         lambda telegram_id: None,
@@ -88,6 +108,7 @@ async def test_delete_my_data_first_call_creates_request_and_asks_for_confirmati
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update(user_id=456)
+    allow_linked_user(monkeypatch)
     calls: list[int] = []
 
     def request_user_deletion(telegram_id: int) -> UserDeletionResult:
@@ -111,6 +132,7 @@ async def test_delete_my_data_confirm_deletes_linked_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update(user_id=456)
+    allow_linked_user(monkeypatch)
     calls: list[int] = []
 
     def confirm_user_deletion(telegram_id: int) -> UserDeletionResult:
@@ -136,6 +158,7 @@ async def test_delete_my_data_confirm_reports_admin_manual_review(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update()
+    allow_linked_user(monkeypatch)
     monkeypatch.setattr(
         "forge_bot.commands.privacy.confirm_user_deletion",
         lambda telegram_id: UserDeletionResult("manual_review_requested"),
@@ -151,6 +174,7 @@ async def test_delete_my_data_confirm_reports_unlinked_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update()
+    allow_linked_user(monkeypatch)
     monkeypatch.setattr(
         "forge_bot.commands.privacy.confirm_user_deletion",
         lambda telegram_id: UserDeletionResult("not_linked"),

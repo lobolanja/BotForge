@@ -14,6 +14,56 @@ class FakeMessage:
 
 
 @pytest.mark.asyncio
+async def test_require_linked_user_denies_unlinked_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = FakeMessage()
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=message,
+    )
+    context = SimpleNamespace()
+    called = False
+
+    async def protected_handler(update: object, context: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: False)
+
+    wrapped = auth_guard.require_linked_user(protected_handler)
+    await wrapped(update, context)
+
+    assert not called
+    assert message.replies == [auth_guard.INVITE_REQUIRED_MESSAGE]
+
+
+@pytest.mark.asyncio
+async def test_require_linked_user_allows_linked_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = FakeMessage()
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=message,
+    )
+    context = SimpleNamespace()
+    called = False
+
+    async def protected_handler(update: object, context: object) -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: True)
+
+    wrapped = auth_guard.require_linked_user(protected_handler)
+    await wrapped(update, context)
+
+    assert called
+    assert message.replies == []
+
+
+@pytest.mark.asyncio
 async def test_admin_required_denies_non_admin(monkeypatch: pytest.MonkeyPatch) -> None:
     message = FakeMessage()
     update = SimpleNamespace(

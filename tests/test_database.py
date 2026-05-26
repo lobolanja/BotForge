@@ -23,6 +23,12 @@ class FakeCursor:
             self.rowcount = 1
         elif "DELETE FROM conversation_messages" in normalized:
             self.rowcount = 3
+        elif "DELETE FROM langchain_chat_history" in normalized:
+            self.rowcount = 5
+        elif "DELETE FROM langchain_chat_sessions" in normalized:
+            self.rowcount = 2
+        elif "DELETE FROM nutrition_daily_logs" in normalized:
+            self.rowcount = 2
         elif "DELETE FROM user_memory_summaries" in normalized:
             self.rowcount = 1
         elif "UPDATE inbound_messages" in normalized:
@@ -69,7 +75,7 @@ def test_memory_clear_also_scrubs_answered_inbound_bootstrap(
     result = clear_memory_for_telegram_user(telegram_id=456)
 
     assert result is not None
-    assert result.conversation_memory == 3
+    assert result.conversation_memory == 10
     assert result.compacted_memory == 1
     assert connection.committed is True
     assert connection.rolled_back is False
@@ -79,5 +85,17 @@ def test_memory_clear_also_scrubs_answered_inbound_bootstrap(
         "UPDATE inbound_messages SET text = NULL, raw_update = NULL" in statement
         and "status = 'answered'" in statement
         and "message_type = 'text'" in statement
+        for statement in connection.cursor_obj.statements
+    )
+    assert any(
+        "DELETE FROM langchain_chat_history WHERE session_id IN" in statement
+        for statement in connection.cursor_obj.statements
+    )
+    assert any(
+        "DELETE FROM langchain_chat_sessions WHERE user_id = %s" in statement
+        for statement in connection.cursor_obj.statements
+    )
+    assert any(
+        "DELETE FROM nutrition_daily_logs WHERE user_id = %s" in statement
         for statement in connection.cursor_obj.statements
     )

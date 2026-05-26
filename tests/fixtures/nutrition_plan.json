@@ -1,0 +1,1367 @@
+{
+  "plan_id": "sample_nutrition_plan_v1",
+  "description": "Plan demo cargado desde el repo para validar respuestas del bot nutricionista antes de persistencia por usuario.",
+  "usage_notes": [
+    "situaciones enruta tipo de dia + momento a una clave de comidas.",
+    "comidas contiene cantidades y opciones; no inventar cantidades fuera de estos bloques.",
+    "No mostrar macros salvo que el usuario los pida.",
+    "Si falta tipo de dia o momento, preguntar una aclaracion breve."
+  ],
+  "momentos": {
+    "desayuno": {
+      "label": "Desayuno",
+      "aliases": [
+        "desayuno",
+        "desayunar",
+        "primera comida"
+      ]
+    },
+    "media_manana": {
+      "label": "Media mañana",
+      "aliases": [
+        "media mañana",
+        "media manana",
+        "tentempie de mañana",
+        "tentempie de manana",
+        "snack de mañana",
+        "snack de manana"
+      ]
+    },
+    "almuerzo": {
+      "label": "Almuerzo",
+      "aliases": [
+        "almuerzo",
+        "comida",
+        "comer",
+        "mediodia",
+        "medio dia"
+      ]
+    },
+    "pre_entreno": {
+      "label": "Pre entreno",
+      "aliases": [
+        "pre entreno",
+        "preentreno",
+        "antes de entrenar",
+        "antes del entreno"
+      ]
+    },
+    "post_entreno": {
+      "label": "Post entreno",
+      "aliases": [
+        "post entreno",
+        "postentreno",
+        "despues de entrenar",
+        "despues del entreno"
+      ]
+    },
+    "merienda": {
+      "label": "Merienda",
+      "aliases": [
+        "merienda",
+        "merendar",
+        "media tarde"
+      ]
+    },
+    "cena": {
+      "label": "Cena",
+      "aliases": [
+        "cena",
+        "cenar",
+        "ceno",
+        "noche"
+      ]
+    }
+  },
+  "situaciones": {
+    "crossfit": {
+      "label": "CrossFit o entrenamiento de fuerza alta intensidad",
+      "aliases": [
+        "crossfit",
+        "fuerza",
+        "gym",
+        "gimnasio",
+        "entrenamiento de fuerza",
+        "hiit"
+      ],
+      "tipo_dia": "entrenamiento_fuerza_por_la_tarde",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "comida": "comida_2",
+        "mediodia": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "futbol": {
+      "label": "Futbol",
+      "aliases": [
+        "futbol",
+        "partido",
+        "entreno de futbol",
+        "futbito"
+      ],
+      "tipo_dia": "entrenamiento_de_futbol",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_4",
+        "comida": "comida_4",
+        "mediodia": "comida_4",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "ciclismo": {
+      "label": "Ciclismo",
+      "aliases": [
+        "ciclismo",
+        "bici",
+        "bicicleta",
+        "salida en bici",
+        "rodillo"
+      ],
+      "tipo_dia": "entrenamiento_resistencia",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "comida": "comida_2",
+        "mediodia": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "atletismo": {
+      "label": "Atletismo o carrera",
+      "aliases": [
+        "atletismo",
+        "correr",
+        "running",
+        "carrera",
+        "series",
+        "tirada"
+      ],
+      "tipo_dia": "entrenamiento_resistencia",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "comida": "comida_2",
+        "mediodia": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "natacion": {
+      "label": "Natacion",
+      "aliases": [
+        "natacion",
+        "natación",
+        "nadar",
+        "piscina",
+        "swimming"
+      ],
+      "tipo_dia": "entrenamiento_resistencia",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_2",
+        "comida": "comida_2",
+        "mediodia": "comida_2",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    },
+    "no_entreno": {
+      "label": "Dia sin entrenamiento",
+      "aliases": [
+        "no entreno",
+        "descanso",
+        "rest day",
+        "sin entrenar",
+        "no_entreno"
+      ],
+      "tipo_dia": "no_entreno",
+      "suplementacion": [
+        "10g de creatina monohidrato creapure"
+      ],
+      "momentos": {
+        "desayuno": "comida_1",
+        "almuerzo": "comida_5",
+        "comida": "comida_5",
+        "mediodia": "comida_5",
+        "merienda": "comida_0",
+        "cena": "comida_3"
+      }
+    }
+  },
+  "comidas": {
+    "comida_0": {
+      "descripcion": "Merienda simple",
+      "macros_plan": {
+        "codigos": {
+          "actual": "0.2.0"
+        },
+        "interpretacion": {
+          "actual": {
+            "hidratos_g": 0,
+            "proteina_g": 20,
+            "grasa_g": 0
+          }
+        }
+      },
+      "and": [
+        {
+          "nombre": "proteina",
+          "or": [
+            "25g de proteína Whey"
+          ]
+        }
+      ]
+    },
+    "comida_1": {
+      "descripcion": "Elige una de las siguientes opciones",
+      "macros_plan": {
+        "codigos": {
+          "anterior": "4.2.1,5",
+          "actual": "4.2.2"
+        },
+        "interpretacion": {
+          "anterior": {
+            "hidratos_g": 40,
+            "proteina_g": 20,
+            "grasa_g": 15
+          },
+          "actual": {
+            "hidratos_g": 40,
+            "proteina_g": 20,
+            "grasa_g": 20
+          }
+        }
+      },
+      "or": [
+        {
+          "nombre": "pan_proteina_grasa",
+          "and": [
+            {
+              "nombre": "pan",
+              "or": [
+                "80g de pan integral"
+              ]
+            },
+            {
+              "nombre": "proteina",
+              "or": [
+                "120g de pavo",
+                "110g de jamón cocido",
+                "2 latas de atún al natural",
+                "60g de lomo embuchado",
+                "80g de jamón serrano sin veta"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "2 cucharadas soperas de aceite de oliva (20g)",
+                "32g de frutos secos",
+                "70g de queso Philadelphia Original",
+                "40g de crema de cacahuete",
+                "160g de aguacate",
+                "20g de mantequilla"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "leche_pan_proteina_grasa",
+          "and": [
+            {
+              "nombre": "leche",
+              "or": [
+                "220ml de leche entera"
+              ]
+            },
+            {
+              "nombre": "pan",
+              "or": [
+                "60g de pan integral"
+              ]
+            },
+            {
+              "nombre": "proteina",
+              "or": [
+                "90g de pavo",
+                "70g de jamón cocido",
+                "1.5 latas de atún al natural",
+                "45g de lomo embuchado",
+                "60g de jamón serrano sin veta"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "1.5 cucharadas soperas de aceite de oliva (15g)",
+                "24g de frutos secos",
+                "50g de queso Philadelphia Original",
+                "30g de crema de cacahuete",
+                "120g de aguacate"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "pan_proteina_grasa_queso_curado",
+          "and": [
+            {
+              "nombre": "pan",
+              "or": [
+                "80g de pan integral"
+              ]
+            },
+            {
+              "nombre": "proteina",
+              "or": [
+                "90g de pavo",
+                "70g de jamón cocido",
+                "1.5 latas de atún al natural",
+                "45g de lomo embuchado",
+                "60g de jamón serrano sin veta"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "1 cucharada sopera de aceite de oliva (10g)",
+                "16g de frutos secos",
+                "35g de queso Philadelphia Original",
+                "20g de crema de cacahuete",
+                "80g de aguacate"
+              ]
+            },
+            {
+              "nombre": "queso",
+              "or": [
+                "30g de queso curado"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "pan_tomate_proteina_grasa_fruta",
+          "and": [
+            {
+              "nombre": "pan",
+              "or": [
+                "60g de pan integral"
+              ]
+            },
+            {
+              "nombre": "tomate",
+              "or": [
+                "tomate restregado opcional"
+              ]
+            },
+            {
+              "nombre": "proteina",
+              "or": [
+                "120g de pavo",
+                "2 latas de atún al natural",
+                "80g de jamón serrano sin veta",
+                "60g de lomo embuchado"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "2 cucharadas soperas de aceite de oliva (20g)",
+                "32g de frutos secos",
+                "160g de aguacate"
+              ]
+            },
+            {
+              "nombre": "fruta",
+              "or": [
+                "80g de piña",
+                "80g de kiwi",
+                "80g de manzana verde",
+                "80g de ciruela",
+                "80g de granada",
+                "80g de higo",
+                "80g de mandarinas",
+                "80g de mango",
+                "80g de nectarina",
+                "80g de uva",
+                "135g de melocotón",
+                "135g de albaricoque",
+                "135g de frambuesa",
+                "135g de naranja",
+                "165g de fresas",
+                "165g de sandía",
+                "65g de plátano",
+                "100ml de zumo de naranja natural"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "huevos_pan_fruta_grasa",
+          "and": [
+            {
+              "nombre": "huevos",
+              "or": [
+                "2 huevos"
+              ]
+            },
+            {
+              "nombre": "pan",
+              "or": [
+                "60g de pan integral"
+              ]
+            },
+            {
+              "nombre": "fruta",
+              "or": [
+                "80g de piña",
+                "80g de kiwi",
+                "80g de manzana verde",
+                "80g de ciruela",
+                "80g de granada",
+                "80g de higo",
+                "80g de mandarinas",
+                "80g de mango",
+                "80g de nectarina",
+                "80g de uva",
+                "135g de melocotón",
+                "135g de albaricoque",
+                "135g de frambuesa",
+                "135g de naranja",
+                "165g de fresas",
+                "165g de sandía",
+                "65g de plátano",
+                "100ml de zumo de naranja natural"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "1 cucharada de aceite de oliva (10g)",
+                "16g de frutos secos",
+                "20g de crema de cacahuete"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "creppe_harina_claras_grasa_queso",
+          "and": [
+            {
+              "nombre": "harina",
+              "or": [
+                "60g de harina de avena",
+                "60g de harina de trigo",
+                "60g de harina de arroz"
+              ]
+            },
+            {
+              "nombre": "claras",
+              "or": [
+                "200ml de clara de huevo Hacendado"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "media cucharada sopera de aceite de oliva",
+                "8g de frutos secos",
+                "10g de crema de cacahuete"
+              ]
+            },
+            {
+              "nombre": "queso",
+              "or": [
+                "50g de queso Philadelphia Original"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "bizcocho_avena_claras_grasa_cacao",
+          "and": [
+            {
+              "nombre": "avena",
+              "or": [
+                "60g de avena"
+              ]
+            },
+            {
+              "nombre": "claras",
+              "or": [
+                "200ml de clara de huevo"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "40g de crema de cacahuete",
+                "32g de frutos secos"
+              ]
+            },
+            {
+              "nombre": "cacao",
+              "or": [
+                "10g de cacao puro desgrasado"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "chocolate_yogures_fruta",
+          "and": [
+            {
+              "nombre": "chocolate",
+              "or": [
+                "40g de chocolate negro 90%"
+              ]
+            },
+            {
+              "nombre": "yogur",
+              "or": [
+                "2 yogures Hacendado +Prote arándanos"
+              ]
+            },
+            {
+              "nombre": "fruta",
+              "or": [
+                "160g de piña",
+                "160g de kiwi",
+                "160g de manzana verde",
+                "160g de ciruela",
+                "160g de granada",
+                "160g de higo",
+                "160g de mandarinas",
+                "160g de mango",
+                "160g de nectarina",
+                "160g de uva",
+                "270g de melocotón",
+                "270g de albaricoque",
+                "270g de frambuesa",
+                "270g de naranja",
+                "330g de fresas",
+                "330g de sandía",
+                "130g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "yogures_proteina_frutos_secos_fruta",
+          "and": [
+            {
+              "nombre": "yogur",
+              "or": [
+                "2 yogures de proteína natural Hacendado",
+                "2 yogures de proteína arándanos Hacendado",
+                "2 yogures de proteína fresa Hacendado",
+                "2 yogures de proteína mango Hacendado",
+                "2 yogures de proteína limón Hacendado"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "32g de frutos secos"
+              ]
+            },
+            {
+              "nombre": "fruta",
+              "or": [
+                "160g de piña",
+                "160g de kiwi",
+                "160g de manzana verde",
+                "160g de ciruela",
+                "160g de granada",
+                "160g de higo",
+                "160g de mandarinas",
+                "160g de mango",
+                "160g de nectarina",
+                "160g de uva",
+                "270g de melocotón",
+                "270g de albaricoque",
+                "270g de frambuesa",
+                "270g de naranja",
+                "330g de fresas",
+                "330g de sandía",
+                "130g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "yogures_chocolate_frutos_secos_fruta",
+          "and": [
+            {
+              "nombre": "yogur",
+              "or": [
+                "2 yogures de proteínas chocolate Hacendado"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "32g de frutos secos"
+              ]
+            },
+            {
+              "nombre": "fruta",
+              "or": [
+                "240g de piña",
+                "240g de kiwi",
+                "240g de manzana verde",
+                "240g de ciruela",
+                "240g de granada",
+                "240g de higo",
+                "240g de mandarinas",
+                "240g de mango",
+                "240g de nectarina",
+                "240g de uva",
+                "400g de melocotón",
+                "400g de albaricoque",
+                "400g de frambuesa",
+                "400g de naranja",
+                "500g de fresas",
+                "500g de sandía",
+                "200g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "leche_cereales_frutos_secos_proteina",
+          "and": [
+            {
+              "nombre": "leche",
+              "or": [
+                "220ml de leche entera"
+              ]
+            },
+            {
+              "nombre": "cereal",
+              "or": [
+                "60g de cereales de espelta"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "32g de frutos secos"
+              ]
+            },
+            {
+              "nombre": "proteina",
+              "or": [
+                "90g de pavo",
+                "60g de jamón serrano sin veta",
+                "45g de lomo embuchado"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "yogures_chocolate_frutos_secos_cereal",
+          "and": [
+            {
+              "nombre": "yogur",
+              "or": [
+                "2 yogures de proteínas chocolate"
+              ]
+            },
+            {
+              "nombre": "grasa",
+              "or": [
+                "32g de frutos secos"
+              ]
+            },
+            {
+              "nombre": "cereal",
+              "or": [
+                "45g de corn flakes",
+                "45g de avena"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "comida_2": {
+      "descripcion": "Elige y combina. E.F",
+      "macros_plan": {
+        "codigos": {
+          "anterior": "4.9.2",
+          "actual": "3.9.2"
+        },
+        "interpretacion": {
+          "anterior": {
+            "hidratos_g": 40,
+            "proteina_g": 90,
+            "grasa_g": 20
+          },
+          "actual": {
+            "hidratos_g": 30,
+            "proteina_g": 90,
+            "grasa_g": 20
+          }
+        }
+      },
+      "and": [
+        {
+          "nombre": "grasas",
+          "or": [
+            "Cocinar con 2 cucharadas soperas de aceite de oliva (20g)",
+            "160g de aguacate",
+            "80g de aceitunas"
+          ]
+        },
+        {
+          "nombre": "hidratos",
+          "and": [
+            {
+              "nombre": "verdura",
+              "or": [
+                "verdura hasta 375g"
+              ]
+            },
+            {
+              "nombre": "fuente_hidrato",
+              "or": [
+                "30g de arroz integral",
+                "30g de pasta integral",
+                "140g de patata",
+                "100g de boniato",
+                "40g de legumbres",
+                "40g de pan integral",
+                "160g de piña",
+                "160g de kiwi",
+                "160g de manzana verde",
+                "160g de ciruela",
+                "160g de granada",
+                "160g de higo",
+                "160g de mandarinas",
+                "160g de mango",
+                "160g de nectarina",
+                "160g de uva",
+                "270g de melocotón",
+                "270g de albaricoque",
+                "270g de frambuesa",
+                "270g de naranja",
+                "330g de fresas",
+                "330g de sandía",
+                "130g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "proteinas",
+          "or": [
+            {
+              "nombre": "opcion_1",
+              "or": [
+                "360g de pechuga de pollo",
+                "360g de pavo",
+                "360g de ternera",
+                "360g de conejo",
+                "360g de cualquier carne magra",
+                "450g de solomillo de cerdo",
+                "360g de lomo de cerdo",
+                "360g de muslo de pollo",
+                "360g de cordero",
+                "360g de secreto de cerdo",
+                "360g de presa de cerdo",
+                "360g de cualquier carne grasa"
+              ],
+              "condiciones": [
+                "si eliges una carne grasa, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_2",
+              "or": [
+                "495g de dorada",
+                "495g de merluza",
+                "495g de panga",
+                "495g de cazón",
+                "495g de calamares",
+                "495g de lubina",
+                "495g de bacalao",
+                "495g de cualquier pescado blanco o marisco",
+                "495g de caballa fresca",
+                "495g de atún fresco",
+                "495g de salmón fresco",
+                "495g de pez espada",
+                "495g de cualquier pescado azul"
+              ],
+              "condiciones": [
+                "si eliges pescado azul, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "3 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "240g de carne fresca",
+                    "330g de pescado"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 1.5 cucharadas de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_claras",
+              "and": [
+                {
+                  "nombre": "claras",
+                  "or": [
+                    "300ml de clara de huevo"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "240g de carne fresca",
+                    "330g de pescado"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "comida_3": {
+      "descripcion": "Elige una opción de cada grupo y combina",
+      "macros_plan": {
+        "codigos": {
+          "actual": "1.7.2"
+        },
+        "interpretacion": {
+          "actual": {
+            "hidratos_g": 10,
+            "proteina_g": 70,
+            "grasa_g": 20
+          }
+        }
+      },
+      "and": [
+        {
+          "nombre": "grasas",
+          "or": [
+            "Cocinar con 2 cucharadas soperas de aceite de oliva (20g)",
+            "160g de aguacate",
+            "80g de aceitunas",
+            "32g de frutos secos"
+          ]
+        },
+        {
+          "nombre": "hc",
+          "or": [
+            "verdura hasta 375g (brócoli o coliflor o lechuga o judías verdes o pimiento o tomate o espárrago o espinacas o acelgas o berenjenas)",
+            "hasta 250g de champiñones"
+          ],
+          "notas": [
+            "Puedes combinar verduras dividiendo las cantidades"
+          ]
+        },
+        {
+          "nombre": "proteinas",
+          "or": [
+            {
+              "nombre": "opcion_1",
+              "or": [
+                "240g de pechuga de pollo",
+                "240g de pavo",
+                "240g de ternera",
+                "240g de conejo",
+                "240g de cualquier carne magra",
+                "300g de solomillo de cerdo",
+                "240g de lomo de cerdo",
+                "240g de muslo de pollo",
+                "240g de cordero",
+                "240g de secreto de cerdo",
+                "240g de presa de cerdo",
+                "240g de cualquier carne grasa"
+              ],
+              "condiciones": [
+                "si eliges una carne grasa, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_2",
+              "or": [
+                "330g de dorada",
+                "330g de merluza",
+                "330g de panga",
+                "330g de cazón",
+                "330g de calamares",
+                "330g de lubina",
+                "330g de bacalao",
+                "330g de cualquier pescado blanco o marisco",
+                "330g de caballa fresca",
+                "330g de atún fresco",
+                "330g de salmón fresco",
+                "330g de pez espada",
+                "330g de cualquier pescado azul"
+              ],
+              "condiciones": [
+                "si eliges pescado azul, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_4",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "4 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "120g de pavo",
+                    "80g de jamón serrano sin veta"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 2 cucharadas de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_2",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "2 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "160g de carne fresca",
+                    "220g de pescado"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 1 cucharada de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_claras",
+              "and": [
+                {
+                  "nombre": "claras",
+                  "or": [
+                    "200ml de clara huevo"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "160g de carne fresca",
+                    "220g de pescado"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 1 cucharada de aceite de oliva"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "postre",
+          "or": [
+            "1 yogur de proteína Hacendado"
+          ]
+        }
+      ]
+    },
+    "comida_4": {
+      "descripcion": "Elige y combina. EFUT",
+      "macros_plan": {
+        "codigos": {
+          "anterior": "3.7.1,5",
+          "actual": "2.7.1,5"
+        },
+        "interpretacion": {
+          "anterior": {
+            "hidratos_g": 30,
+            "proteina_g": 70,
+            "grasa_g": 15
+          },
+          "actual": {
+            "hidratos_g": 20,
+            "proteina_g": 70,
+            "grasa_g": 15
+          }
+        }
+      },
+      "and": [
+        {
+          "nombre": "grasas",
+          "or": [
+            "Cocinar con 1.5 cucharadas soperas de aceite de oliva (15g)",
+            "120g de aguacate",
+            "60g de aceitunas"
+          ]
+        },
+        {
+          "nombre": "h_carbono",
+          "and": [
+            {
+              "nombre": "verdura",
+              "or": [
+                "verdura (la que quieras desde 50g hasta 375g)"
+              ]
+            },
+            {
+              "nombre": "fuente_hidrato",
+              "or": [
+                "15g de arroz",
+                "15g de pasta integral",
+                "70g de patata",
+                "50g de boniato",
+                "20g de legumbres",
+                "20g de pan integral",
+                "80g de piña",
+                "80g de kiwi",
+                "80g de manzana verde",
+                "80g de ciruela",
+                "80g de granada",
+                "80g de higo",
+                "80g de mandarinas",
+                "80g de mango",
+                "80g de nectarina",
+                "80g de uva",
+                "135g de melocotón",
+                "135g de albaricoque",
+                "135g de frambuesa",
+                "135g de naranja",
+                "165g de fresas",
+                "165g de sandía",
+                "65g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "proteinas",
+          "or": [
+            {
+              "nombre": "opcion_1",
+              "or": [
+                "280g de pechuga de pollo",
+                "280g de pavo",
+                "280g de ternera",
+                "280g de conejo",
+                "280g de cualquier carne magra",
+                "350g de solomillo de cerdo",
+                "280g de lomo de cerdo",
+                "280g de muslo de pollo",
+                "280g de cordero",
+                "280g de secreto de cerdo",
+                "280g de presa de cerdo",
+                "280g de cualquier carne grasa"
+              ],
+              "condiciones": [
+                "si eliges una carne grasa, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_2",
+              "or": [
+                "375g de dorada",
+                "375g de merluza",
+                "375g de panga",
+                "375g de cazón",
+                "375g de calamares",
+                "375g de lubina",
+                "375g de bacalao",
+                "375g de cualquier pescado blanco o marisco",
+                "375g de caballa fresca",
+                "375g de atún fresco",
+                "375g de salmón fresco",
+                "375g de pez espada",
+                "375g de cualquier pescado azul"
+              ],
+              "condiciones": [
+                "si eliges pescado azul, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_4",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "4 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "180g de pavo",
+                    "120g de jamón serrano sin veta"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 2 cucharadas de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_2",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "2 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "200g de carne fresca",
+                    "275g de pescado"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 1 cucharada de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_claras",
+              "and": [
+                {
+                  "nombre": "claras",
+                  "or": [
+                    "200ml de clara de huevo"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "200g de carne fresca",
+                    "275g de pescado"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "comida_5": {
+      "descripcion": "Elige y combina. N.E",
+      "macros_plan": {
+        "codigos": {
+          "anterior": "3.7.2",
+          "actual": "2.7.2"
+        },
+        "interpretacion": {
+          "anterior": {
+            "hidratos_g": 30,
+            "proteina_g": 70,
+            "grasa_g": 20
+          },
+          "actual": {
+            "hidratos_g": 20,
+            "proteina_g": 70,
+            "grasa_g": 20
+          }
+        }
+      },
+      "and": [
+        {
+          "nombre": "grasas",
+          "or": [
+            "Cocinar con 2 cucharadas soperas de aceite de oliva (20g)",
+            "160g de aguacate",
+            "80g de aceitunas"
+          ]
+        },
+        {
+          "nombre": "hc",
+          "and": [
+            {
+              "nombre": "verdura",
+              "or": [
+                "verdura hasta 375g"
+              ]
+            },
+            {
+              "nombre": "fuente_hidrato",
+              "or": [
+                "15g de arroz",
+                "15g de pasta integral",
+                "70g de patata",
+                "50g de boniato",
+                "20g de legumbres",
+                "20g de pan integral",
+                "80g de piña",
+                "80g de kiwi",
+                "80g de manzana verde",
+                "80g de ciruela",
+                "80g de granada",
+                "80g de higo",
+                "80g de mandarinas",
+                "80g de mango",
+                "80g de nectarina",
+                "80g de uva",
+                "135g de melocotón",
+                "135g de albaricoque",
+                "135g de frambuesa",
+                "135g de naranja",
+                "165g de fresas",
+                "165g de sandía",
+                "65g de plátano"
+              ]
+            }
+          ]
+        },
+        {
+          "nombre": "proteinas",
+          "or": [
+            {
+              "nombre": "opcion_1",
+              "or": [
+                "280g de pechuga de pollo",
+                "280g de pavo",
+                "280g de ternera",
+                "280g de conejo",
+                "280g de cualquier carne magra",
+                "350g de solomillo de cerdo",
+                "280g de lomo de cerdo",
+                "280g de muslo de pollo",
+                "280g de cordero",
+                "280g de secreto de cerdo",
+                "280g de presa de cerdo",
+                "280g de cualquier carne grasa"
+              ],
+              "condiciones": [
+                "si eliges una carne grasa, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_2",
+              "or": [
+                "375g de dorada",
+                "375g de merluza",
+                "375g de panga",
+                "375g de cazón",
+                "375g de calamares",
+                "375g de lubina",
+                "375g de bacalao",
+                "375g de cualquier pescado blanco o marisco",
+                "375g de caballa fresca",
+                "375g de atún fresco",
+                "375g de salmón fresco",
+                "375g de pez espada",
+                "375g de cualquier pescado azul"
+              ],
+              "condiciones": [
+                "si eliges pescado azul, eliminar el aceite"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_4",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "4 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "180g de pavo",
+                    "120g de jamón serrano sin veta"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 2 cucharadas de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_huevos_2",
+              "and": [
+                {
+                  "nombre": "huevos",
+                  "or": [
+                    "2 huevos"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "200g de carne fresca",
+                    "275g de pescado"
+                  ]
+                }
+              ],
+              "condiciones": [
+                "eliminar 1 cucharada de aceite de oliva"
+              ]
+            },
+            {
+              "nombre": "opcion_3_claras",
+              "and": [
+                {
+                  "nombre": "claras",
+                  "or": [
+                    "200ml de clara de huevo"
+                  ]
+                },
+                {
+                  "nombre": "acompañamiento",
+                  "or": [
+                    "200g de carne fresca",
+                    "275g de pescado"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

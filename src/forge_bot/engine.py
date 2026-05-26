@@ -1,34 +1,65 @@
 import asyncio
+import html
 import json
 import logging
+import re
+import ssl
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+from zoneinfo import ZoneInfo
 
+import certifi
 import ollama
 
 from .bot_profile import BotProfile, load_active_bot_profile
 from .config import get_settings
+from .nutrition.orchestrator import prepare_nutrition_prompt_async
 from .prompting import ChatMessage, assemble_prompt_messages
 
 logger = logging.getLogger(__name__)
 
 AI_TIMEOUT_FALLBACK = (
-    "The AI response is taking longer than expected. Please try again in a moment."
+    "No he podido cerrar la respuesta tras varios minutos. No la reenvies de "
+    "momento; prueba con una version mas corta si necesitas resolverlo ya."
 )
 AI_ERROR_FALLBACK = (
-    "The AI service is temporarily unavailable. Please try again in a moment."
+    "El servicio de IA no esta disponible ahora mismo. Prueba de nuevo en un momento."
 )
 FALLBACK_DISABLED_VALUES = {"", "none", "disabled", "off"}
+PROFILE_PRIMARY_PROVIDER_VALUES = {"", "profile"}
 NVIDIA_ALLOWED_URL_SCHEMES = {"https"}
 AI_TIMEOUT_ERRORS = (TimeoutError, asyncio.TimeoutError)
 
 
 class ProviderConfigurationError(RuntimeError):
     """Raised when a selected LLM provider is not configured for use."""
+
+
+class GeneratedAnswer(str):
+    """String response with optional post-success side effects."""
+
+    debug_log: bool
+    post_success_actions: tuple[object, ...]
+    store_in_memory: bool
+
+    def __new__(
+        cls,
+        value: str,
+        *,
+        debug_log: bool = True,
+        post_success_actions: Sequence[object] = (),
+        store_in_memory: bool = True,
+    ) -> "GeneratedAnswer":
+        instance = str.__new__(cls, value)
+        instance.debug_log = debug_log
+        instance.post_success_actions = tuple(post_success_actions)
+        instance.store_in_memory = store_in_memory
+        return instance
 
 
 class OllamaProvider:
@@ -76,18 +107,53 @@ class NvidiaNimProvider:
         self._base_url = _validated_https_base_url(base_url)
         self._model = model
         self._timeout_seconds = timeout_seconds
+        self._ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     async def chat(self, *, model: str, messages: list[ChatMessage]) -> str:
-        del model
+        request_model = _nvidia_model_for_request(model, self._model)
         return await asyncio.wait_for(
-            asyncio.to_thread(self._chat, messages),
+            asyncio.to_thread(self._chat, messages, request_model),
             timeout=self._timeout_seconds,
         )
 
-    def _chat(self, messages: list[ChatMessage]) -> str:
+    async def stream_chat(
+        self,
+        *,
+        model: str,
+        messages: list[ChatMessage],
+    ) -> AsyncIterator[str]:
+        request_model = _nvidia_model_for_request(model, self._model)
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
+
+        def worker() -> None:
+            try:
+                for chunk in self._stream_chat(messages, request_model):
+                    loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            except BaseException as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, exc)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        worker_task = asyncio.create_task(asyncio.to_thread(worker))
+        try:
+            while True:
+                item = await asyncio.wait_for(
+                    queue.get(),
+                    timeout=self._timeout_seconds,
+                )
+                if item is None:
+                    break
+                if isinstance(item, BaseException):
+                    raise item
+                yield item
+        finally:
+            await worker_task
+
+    def _chat(self, messages: list[ChatMessage], model: str) -> str:
         body = json.dumps(
             {
-                "model": self._model,
+                "model": model,
                 "messages": messages,
             }
         ).encode("utf-8")
@@ -107,6 +173,7 @@ class NvidiaNimProvider:
             with urllib.request.urlopen(  # nosec B310
                 request,
                 timeout=self._timeout_seconds,
+                context=self._ssl_context,
             ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
@@ -124,6 +191,49 @@ class NvidiaNimProvider:
             ) from exc
         return str(content or "")
 
+    def _stream_chat(self, messages: list[ChatMessage], model: str) -> Iterator[str]:
+        body = json.dumps(
+            {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self._base_url}/chat/completions",
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+            },
+        )
+
+        try:
+            # The base URL is normalized by _validated_https_base_url().
+            with urllib.request.urlopen(  # nosec B310
+                request,
+                timeout=self._timeout_seconds,
+                context=self._ssl_context,
+            ) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line.removeprefix("data:").strip()
+                    if data == "[DONE]":
+                        break
+                    chunk = _nvidia_stream_delta(data)
+                    if chunk:
+                        yield chunk
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(
+                f"NVIDIA NIM streaming request failed with HTTP {exc.code}."
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError("NVIDIA NIM streaming request failed.") from exc
+
 
 async def answer(
     user: str,
@@ -133,6 +243,7 @@ async def answer(
     queue_wait_seconds: float = 0.0,
     compacted_user_memory: str | None = None,
     recent_conversation_messages: list[ChatMessage] | None = None,
+    internal_user_id: int | None = None,
 ) -> str:
     """Send a profile-aware prompt to the configured LLM provider.
 
@@ -144,19 +255,45 @@ async def answer(
         queue_wait_seconds: Seconds between message receipt and processing start.
         compacted_user_memory: Durable summary for this user/profile.
         recent_conversation_messages: Recent raw messages for this user/profile.
+        internal_user_id: Internal database user id for profile-specific state.
 
     Returns:
         The assistant response text produced by Ollama.
     """
     settings = get_settings()
     active_profile = _resolve_profile(profile)
-    messages = assemble_prompt_messages(
+    normalizer = _build_nutrition_normalizer(active_profile)
+    now = _current_datetime(settings.bot_timezone)
+    nutrition_prompt = await prepare_nutrition_prompt_async(
         active_profile,
-        current_user_message=msg,
-        user_display_name=user,
+        msg,
         compacted_user_memory=compacted_user_memory,
         recent_conversation_messages=recent_conversation_messages or [],
-        runtime_safety_instructions=[],
+        normalizer_client=normalizer[0] if normalizer is not None else None,
+        normalizer_model=normalizer[1] if normalizer is not None else None,
+        internal_user_id=internal_user_id,
+        current_date=now.date(),
+    )
+    if nutrition_prompt.direct_answer is not None:
+        return GeneratedAnswer(
+            nutrition_prompt.direct_answer,
+            post_success_actions=nutrition_prompt.post_success_actions,
+        )
+
+    messages = assemble_prompt_messages(
+        nutrition_prompt.prompt_profile,
+        current_user_message=msg,
+        user_display_name=user,
+        compacted_user_memory=(
+            compacted_user_memory if nutrition_prompt.include_memory else None
+        ),
+        recent_conversation_messages=(
+            recent_conversation_messages or []
+            if nutrition_prompt.include_memory
+            else []
+        ),
+        runtime_safety_instructions=nutrition_prompt.runtime_instructions,
+        now=now,
     )
     request_id_text = request_id or "unknown"
     fallback_reason = _fallback_reason(
@@ -195,7 +332,7 @@ async def answer(
             settings.ai_timeout_seconds,
             len(msg),
         )
-        return AI_TIMEOUT_FALLBACK
+        return _operational_fallback(AI_TIMEOUT_FALLBACK)
     except ProviderConfigurationError:
         logger.exception(
             "llm_provider_configuration_failed request_id=%s provider_reason=%s "
@@ -204,7 +341,7 @@ async def answer(
             fallback_reason,
             len(msg),
         )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
     except Exception:
         provider_name = _provider_name(provider)
         if provider_name != _fallback_provider_name():
@@ -217,7 +354,7 @@ async def answer(
                 reason="primary_error",
             )
             if fallback_answer is not None:
-                return fallback_answer
+                return _fallback_generated_answer(fallback_answer)
 
         logger.exception(
             "llm_chat_failed request_id=%s provider=%s model=%s message_chars=%s",
@@ -226,15 +363,196 @@ async def answer(
             _logged_model(active_profile.llm_model, provider_name),
             len(msg),
         )
-        return AI_ERROR_FALLBACK
+        return _operational_fallback(AI_ERROR_FALLBACK)
 
     provider_name = _provider_name(provider)
-    return _trim_response(
-        content,
-        provider=provider_name,
-        model=_logged_model(active_profile.llm_model, provider_name),
-        max_chars=settings.ai_max_response_chars,
+    return GeneratedAnswer(
+        _trim_response(
+            content,
+            provider=provider_name,
+            model=_logged_model(active_profile.llm_model, provider_name),
+            max_chars=settings.ai_max_response_chars,
+        ),
+        post_success_actions=nutrition_prompt.post_success_actions,
     )
+
+
+async def answer_stream(
+    user: str,
+    msg: str,
+    *,
+    on_partial: Callable[[str], Awaitable[None]],
+    profile: BotProfile | None = None,
+    request_id: str | None = None,
+    queue_wait_seconds: float = 0.0,
+    compacted_user_memory: str | None = None,
+    recent_conversation_messages: list[ChatMessage] | None = None,
+    internal_user_id: int | None = None,
+) -> str:
+    """Generate an answer and emit partial text when the provider supports it."""
+    settings = get_settings()
+    active_profile = _resolve_profile(profile)
+    normalizer = _build_nutrition_normalizer(active_profile)
+    now = _current_datetime(settings.bot_timezone)
+    nutrition_prompt = await prepare_nutrition_prompt_async(
+        active_profile,
+        msg,
+        compacted_user_memory=compacted_user_memory,
+        recent_conversation_messages=recent_conversation_messages or [],
+        normalizer_client=normalizer[0] if normalizer is not None else None,
+        normalizer_model=normalizer[1] if normalizer is not None else None,
+        internal_user_id=internal_user_id,
+        current_date=now.date(),
+    )
+    if nutrition_prompt.direct_answer is not None:
+        direct = GeneratedAnswer(
+            nutrition_prompt.direct_answer,
+            post_success_actions=nutrition_prompt.post_success_actions,
+        )
+        await on_partial(str(direct))
+        return direct
+
+    messages = assemble_prompt_messages(
+        nutrition_prompt.prompt_profile,
+        current_user_message=msg,
+        user_display_name=user,
+        compacted_user_memory=(
+            compacted_user_memory if nutrition_prompt.include_memory else None
+        ),
+        recent_conversation_messages=(
+            recent_conversation_messages or []
+            if nutrition_prompt.include_memory
+            else []
+        ),
+        runtime_safety_instructions=nutrition_prompt.runtime_instructions,
+        now=now,
+    )
+    request_id_text = request_id or "unknown"
+    fallback_reason = _fallback_reason(
+        queue_wait_seconds=queue_wait_seconds,
+        threshold_seconds=settings.llm_fallback_queue_wait_seconds,
+    )
+    provider: OllamaProvider | NvidiaNimProvider | None = None
+
+    try:
+        provider = _select_provider(
+            profile_provider=active_profile.llm_provider,
+            queue_wait_seconds=queue_wait_seconds,
+        )
+        if not isinstance(provider, NvidiaNimProvider):
+            return await answer(
+                user,
+                msg,
+                profile=active_profile,
+                request_id=request_id,
+                queue_wait_seconds=queue_wait_seconds,
+                compacted_user_memory=compacted_user_memory,
+                recent_conversation_messages=recent_conversation_messages,
+                internal_user_id=internal_user_id,
+            )
+
+        started_at = time.monotonic()
+        raw_parts: list[str] = []
+        last_partial = ""
+        async for chunk in provider.stream_chat(
+            model=active_profile.llm_model,
+            messages=messages,
+        ):
+            raw_parts.append(chunk)
+            partial = _telegram_stream_partial(
+                "".join(raw_parts),
+                max_chars=settings.ai_max_response_chars,
+            )
+            if partial and partial != last_partial:
+                await on_partial(partial)
+                last_partial = partial
+        duration_seconds = time.monotonic() - started_at
+        logger.info(
+            "llm_provider_used request_id=%s provider=%s fallback_reason=%s "
+            "streaming=true duration_seconds=%.6f message_chars=%s",
+            request_id_text,
+            provider.name,
+            fallback_reason,
+            duration_seconds,
+            len(msg),
+        )
+    except AI_TIMEOUT_ERRORS:
+        logger.warning(
+            "llm_chat_timeout request_id=%s provider=%s model=%s "
+            "timeout_seconds=%s message_chars=%s streaming=true",
+            request_id_text,
+            _provider_name(provider),
+            _logged_model(active_profile.llm_model, _provider_name(provider)),
+            settings.ai_timeout_seconds,
+            len(msg),
+        )
+        return _operational_fallback(AI_TIMEOUT_FALLBACK)
+    except ProviderConfigurationError:
+        logger.exception(
+            "llm_provider_configuration_failed request_id=%s provider_reason=%s "
+            "message_chars=%s streaming=true",
+            request_id_text,
+            fallback_reason,
+            len(msg),
+        )
+        return _operational_fallback(AI_ERROR_FALLBACK)
+    except Exception:
+        provider_name = _provider_name(provider)
+        logger.exception(
+            "llm_chat_failed request_id=%s provider=%s model=%s message_chars=%s "
+            "streaming=true",
+            request_id_text,
+            provider_name,
+            _logged_model(active_profile.llm_model, provider_name),
+            len(msg),
+        )
+        partial_answer = _telegram_stream_partial(
+            "".join(raw_parts) if "raw_parts" in locals() else "",
+            max_chars=settings.ai_max_response_chars,
+        )
+        if partial_answer:
+            return GeneratedAnswer(
+                (
+                    f"{partial_answer}\n\n"
+                    "No he podido completar la respuesta, pero esto es lo que "
+                    "llevaba preparado."
+                ),
+                store_in_memory=False,
+            )
+        return _operational_fallback(AI_ERROR_FALLBACK)
+
+    content = "".join(raw_parts)
+    provider_name = _provider_name(provider)
+    return GeneratedAnswer(
+        _trim_response(
+            content,
+            provider=provider_name,
+            model=_logged_model(active_profile.llm_model, provider_name),
+            max_chars=settings.ai_max_response_chars,
+        ),
+        post_success_actions=nutrition_prompt.post_success_actions,
+    )
+
+
+def finalize_successful_answer(answer: str) -> None:
+    """Run side effects that are only safe after the user received an answer."""
+    actions = getattr(answer, "post_success_actions", ())
+    for action in actions:
+        try:
+            if callable(action):
+                action()
+        except Exception:
+            logger.exception("post_success_answer_action_failed")
+
+
+def answer_should_be_debug_logged(answer: str) -> bool:
+    """Return whether this answer belongs in the debug conversation transcript."""
+    return bool(getattr(answer, "debug_log", True))
+
+
+def answer_should_be_stored_in_memory(answer: str) -> bool:
+    """Return whether this answer should become reusable user memory."""
+    return bool(getattr(answer, "store_in_memory", True))
 
 
 async def summarize_memory(
@@ -333,6 +651,10 @@ def _resolve_profile(profile: BotProfile | None) -> BotProfile:
     return load_default_profile()
 
 
+def _current_datetime(timezone_name: str) -> datetime:
+    return datetime.now(ZoneInfo(timezone_name))
+
+
 def load_default_profile() -> BotProfile:
     """Load the configured bot profile for a runtime AI request."""
     settings = get_settings()
@@ -403,13 +725,32 @@ def _validated_https_base_url(base_url: str) -> str:
     )
 
 
+def _nvidia_model_for_request(request_model: str, default_model: str) -> str:
+    return request_model if request_model.startswith("nvidia/") else default_model
+
+
+def _nvidia_stream_delta(data: str) -> str:
+    try:
+        payload = json.loads(data)
+        delta = payload["choices"][0].get("delta", {})
+        return str(delta.get("content") or "")
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        logger.debug("nvidia_stream_chunk_ignored")
+        return ""
+
+
 def _select_provider(
     *,
     profile_provider: str,
     queue_wait_seconds: float,
 ) -> OllamaProvider | NvidiaNimProvider:
     settings = get_settings()
-    primary_provider = settings.llm_primary_provider or profile_provider
+    configured_primary_provider = settings.llm_primary_provider.lower()
+    primary_provider = (
+        profile_provider
+        if configured_primary_provider in PROFILE_PRIMARY_PROVIDER_VALUES
+        else configured_primary_provider
+    )
     fallback_provider = _fallback_provider_name()
     if (
         fallback_provider
@@ -450,6 +791,38 @@ def _build_provider(name: str) -> OllamaProvider | NvidiaNimProvider:
             timeout_seconds=settings.ai_timeout_seconds,
         )
     raise ProviderConfigurationError(f"Unsupported LLM provider: {name}.")
+
+
+def _build_nutrition_normalizer(
+    profile: BotProfile,
+) -> tuple[OllamaProvider | NvidiaNimProvider, str] | None:
+    if profile.bot_profile_id != "nutrition":
+        return None
+
+    settings = get_settings()
+    provider_name = settings.nutrition_normalizer_provider.lower()
+    if provider_name in FALLBACK_DISABLED_VALUES:
+        return None
+    if provider_name in PROFILE_PRIMARY_PROVIDER_VALUES:
+        provider_name = profile.llm_provider
+
+    try:
+        provider = _build_provider(provider_name)
+    except ProviderConfigurationError:
+        logger.warning(
+            "nutrition_normalizer_unavailable provider=%s",
+            provider_name,
+            exc_info=True,
+        )
+        return None
+    return provider, settings.nutrition_normalizer_model
+
+
+def build_nutrition_normalizer(
+    profile: BotProfile,
+) -> tuple[OllamaProvider | NvidiaNimProvider, str] | None:
+    """Return the configured model client for nutrition normalization tasks."""
+    return _build_nutrition_normalizer(profile)
 
 
 async def _answer_with_fallback(
@@ -523,6 +896,16 @@ async def _answer_with_fallback(
     )
 
 
+def _fallback_generated_answer(answer: str) -> GeneratedAnswer:
+    if answer in {AI_TIMEOUT_FALLBACK, AI_ERROR_FALLBACK}:
+        return _operational_fallback(answer)
+    return GeneratedAnswer(answer)
+
+
+def _operational_fallback(answer: str) -> GeneratedAnswer:
+    return GeneratedAnswer(answer, debug_log=False, store_in_memory=False)
+
+
 async def _chat_with_timeout(
     client: ollama.Client,
     *,
@@ -547,17 +930,42 @@ def _trim_response(
     model: str,
     max_chars: int,
 ) -> str:
-    if len(content) <= max_chars:
-        return content
+    cleaned = _telegram_plain_text(content)
+    if len(cleaned) <= max_chars:
+        return cleaned
 
     logger.info(
         "llm_response_truncated provider=%s model=%s original_chars=%s max_chars=%s",
         provider,
         model,
-        len(content),
+        len(cleaned),
         max_chars,
     )
-    return content[:max_chars].rstrip()
+    return cleaned[:max_chars].rstrip()
+
+
+def _telegram_plain_text(content: str) -> str:
+    """Normalize LLM output for Telegram HTML parse mode."""
+    text = html.escape(content.strip())
+    text = re.sub(r"```(?:\w+)?\n?", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    text = re.sub(r"(?m)^\s*[\*\+]\s+", "- ", text)
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__([^_\n]+)__", r"<b>\1</b>", text)
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)
+    text = text.replace("*", "")
+    text = re.sub(r"(?m)^\s*-{3,}\s*$", "", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _telegram_stream_partial(content: str, *, max_chars: int) -> str:
+    cleaned = _telegram_plain_text(content)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[:max_chars].rstrip()
 
 
 def _logged_model(profile_model: str, provider: str) -> str:

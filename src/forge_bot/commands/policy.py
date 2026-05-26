@@ -15,6 +15,8 @@ from forge_bot.database import (
 )
 from forge_bot.messages import build_message
 
+from .auth_guard import require_linked_user
+
 logger = logging.getLogger(__name__)
 
 IDENTITY_UNAVAILABLE_MESSAGE = (
@@ -101,6 +103,7 @@ def policy_prompt() -> str:
     )
 
 
+@require_linked_user
 async def policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
@@ -128,6 +131,7 @@ async def policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(text, reply_markup=policy_action_keyboard())
 
 
+@require_linked_user
 async def accept_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return
@@ -136,6 +140,7 @@ async def accept_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(_accept_policy_message(status))
 
 
+@require_linked_user
 async def decline_policy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return

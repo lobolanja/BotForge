@@ -8,9 +8,11 @@ from forge_bot.config import (
     DEFAULT_BOT_PRIVACY_NOTICE_VERSION,
     DEFAULT_BOT_PROFILE,
     DEFAULT_BOT_PROFILES_DIR,
+    DEFAULT_BOT_TIMEZONE,
     DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT,
     DEFAULT_CHAT_MESSAGES_PER_MINUTE,
     DEFAULT_DB_PORT,
+    DEFAULT_DEBUG_CONVERSATION_LOG_DIR,
     DEFAULT_GLOBAL_ACTIVE_AI_REQUESTS,
     DEFAULT_GLOBAL_AI_QUEUE_SIZE,
     DEFAULT_LLM_FALLBACK_PROVIDER,
@@ -25,6 +27,8 @@ from forge_bot.config import (
     DEFAULT_MESSAGE_EXPIRATION_HOURS,
     DEFAULT_MESSAGE_MAX_RETRIES,
     DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES,
+    DEFAULT_NUTRITION_NORMALIZER_MODEL,
+    DEFAULT_NUTRITION_NORMALIZER_PROVIDER,
     DEFAULT_NVIDIA_BASE_URL,
     DEFAULT_NVIDIA_MODEL,
     DEFAULT_OLLAMA_MODEL,
@@ -84,6 +88,10 @@ def test_defaults_are_applied() -> None:
     assert settings.nvidia_api_key == ""
     assert settings.nvidia_base_url == DEFAULT_NVIDIA_BASE_URL
     assert settings.nvidia_model == DEFAULT_NVIDIA_MODEL
+    assert settings.nutrition_normalizer_provider == (
+        DEFAULT_NUTRITION_NORMALIZER_PROVIDER
+    )
+    assert settings.nutrition_normalizer_model == DEFAULT_NUTRITION_NORMALIZER_MODEL
     assert settings.bot_profile == DEFAULT_BOT_PROFILE
     assert settings.bot_profiles_dir == DEFAULT_BOT_PROFILES_DIR
     assert settings.bot_policy_version == DEFAULT_BOT_POLICY_VERSION
@@ -117,8 +125,11 @@ def test_defaults_are_applied() -> None:
     )
     assert settings.memory_max_message_chars == DEFAULT_MEMORY_MAX_MESSAGE_CHARS
     assert settings.memory_compacted_max_chars == DEFAULT_MEMORY_COMPACTED_MAX_CHARS
+    assert not settings.debug_conversation_log_enabled
+    assert settings.debug_conversation_log_dir == DEFAULT_DEBUG_CONVERSATION_LOG_DIR
     assert not settings.analytics_consent_enabled
     assert not settings.training_consent_enabled
+    assert settings.bot_timezone == DEFAULT_BOT_TIMEZONE
 
 
 def test_abuse_limit_settings_are_configurable() -> None:
@@ -163,6 +174,18 @@ def test_llm_fallback_settings_are_configurable() -> None:
     assert settings.nvidia_model == "nvidia/example-model"
 
 
+def test_nutrition_normalizer_settings_are_configurable() -> None:
+    env = valid_env() | {
+        "NUTRITION_NORMALIZER_PROVIDER": "OLLAMA",
+        "NUTRITION_NORMALIZER_MODEL": "small-local-normalizer",
+    }
+
+    settings = Settings.from_env(env)
+
+    assert settings.nutrition_normalizer_provider == "ollama"
+    assert settings.nutrition_normalizer_model == "small-local-normalizer"
+
+
 def test_memory_settings_are_configurable() -> None:
     env = valid_env() | {
         "MEMORY_ENABLED": "false",
@@ -181,3 +204,40 @@ def test_memory_settings_are_configurable() -> None:
     assert settings.memory_compaction_source_messages == 3
     assert settings.memory_max_message_chars == 1000
     assert settings.memory_compacted_max_chars == 700
+
+
+def test_debug_conversation_log_settings_are_configurable() -> None:
+    env = valid_env() | {
+        "DEBUG_CONVERSATION_LOG_ENABLED": "true",
+        "DEBUG_CONVERSATION_LOG_DIR": "/tmp/botforge-debug-conversations",
+    }
+
+    settings = Settings.from_env(env)
+
+    assert settings.debug_conversation_log_enabled is True
+    assert settings.debug_conversation_log_dir == "/tmp/botforge-debug-conversations"
+
+
+def test_debug_conversation_log_is_blocked_in_production_by_default() -> None:
+    env = valid_env() | {
+        "BOTFORGE_ENV": "production",
+        "DEBUG_CONVERSATION_LOG_ENABLED": "true",
+    }
+
+    with pytest.raises(SettingsError, match="DEBUG_CONVERSATION_LOG_ENABLED"):
+        Settings.from_env(env)
+
+
+def test_bot_timezone_is_configurable() -> None:
+    env = valid_env() | {"BOT_TIMEZONE": "UTC"}
+
+    settings = Settings.from_env(env)
+
+    assert settings.bot_timezone == "UTC"
+
+
+def test_invalid_bot_timezone_fails_fast() -> None:
+    env = valid_env() | {"BOT_TIMEZONE": "Europe/NotAPlace"}
+
+    with pytest.raises(SettingsError, match="BOT_TIMEZONE"):
+        Settings.from_env(env)

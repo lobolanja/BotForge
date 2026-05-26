@@ -43,6 +43,23 @@ def require_login(func: Handler) -> Handler:
     return wrapper
 
 
+def require_linked_user(func: Handler) -> Handler:
+    """Restrict a handler to Telegram users already linked to BotForge."""
+
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not update.effective_user or not update.message:
+            return
+
+        user_id = update.effective_user.id
+        if not await _require_linked_user(update, user_id, INVITE_REQUIRED_MESSAGE):
+            return
+
+        await func(update, context)
+
+    return wrapper
+
+
 def admin_required(func: Handler) -> Handler:
     """Restrict a Telegram command handler to logged-in admin users."""
 

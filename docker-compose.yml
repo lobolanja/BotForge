@@ -12,6 +12,7 @@ services:
       OLLAMA_HOST: http://ollama:11434
       BOT_PROFILE: ${BOT_PROFILE:-default_dev}
       BOT_PROFILES_DIR: ${BOT_PROFILES_DIR:-bot_profiles}
+      DEBUG_CONVERSATION_LOG_DIR: ${DEBUG_CONVERSATION_LOG_DIR:-/home/botforge/debug_conversations}
     depends_on:
       postgres:
         condition: service_healthy

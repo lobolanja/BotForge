@@ -162,6 +162,7 @@ venv.bak/
 
 # Local operational artifacts
 backups/
+debug_conversations/
 *.dump
 
 # Spyder project settings

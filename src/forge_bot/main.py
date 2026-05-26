@@ -12,8 +12,10 @@ from telegram.ext import (
 )
 
 from .bot_profile import BotProfileError, load_active_bot_profile
+from .commands.admin_memory import admin_memory, admin_users
 from .commands.auth import start, status
 from .commands.campaign_invite import campaign_invite
+from .commands.get_plan import get_plan
 from .commands.greet import greet
 from .commands.help import help_command
 from .commands.invite import invite
@@ -28,6 +30,7 @@ from .commands.policy import (
     policy,
 )
 from .commands.privacy import delete_my_data, memory_clear, privacy
+from .commands.set_plan import set_plan
 from .commands.time import time
 from .commands.translate import translate
 from .commands.unknown import unknown_command
@@ -59,6 +62,10 @@ COMMAND_HANDLERS = (
     ("privacy", privacy),
     ("memory_clear", memory_clear),
     ("delete_my_data", delete_my_data),
+    ("admin_users", admin_users),
+    ("admin_memory", admin_memory),
+    ("set_plan", set_plan),
+    ("get_plan", get_plan),
     ("invite", invite),
     ("campaign_invite", campaign_invite),
 )
@@ -217,6 +224,13 @@ def main() -> None:
 
     for command, handler in COMMAND_HANDLERS:
         bot.add_handler(CommandHandler(command, handler))
+
+    bot.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            set_plan,
+        )
+    )
 
     bot.add_handler(
         CallbackQueryHandler(

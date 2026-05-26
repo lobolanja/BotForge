@@ -3,17 +3,20 @@ from dataclasses import dataclass
 from functools import lru_cache
 from os import environ
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 
 DEFAULT_DB_PORT = 5432
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma3:4b"
-DEFAULT_LLM_PRIMARY_PROVIDER = "ollama"
+DEFAULT_LLM_PRIMARY_PROVIDER = "profile"
 DEFAULT_LLM_FALLBACK_PROVIDER = "nvidia"
 DEFAULT_LLM_FALLBACK_QUEUE_WAIT_SECONDS = 100
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_NVIDIA_MODEL = "nvidia/llama-3.1-nemotron-nano-8b-v1"
+DEFAULT_NVIDIA_MODEL = "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+DEFAULT_NUTRITION_NORMALIZER_PROVIDER = "nvidia"
+DEFAULT_NUTRITION_NORMALIZER_MODEL = DEFAULT_NVIDIA_MODEL
 DEFAULT_BOT_PROFILE = "default_dev"
 DEFAULT_BOT_PROFILES_DIR = "bot_profiles"
 DEFAULT_BOT_POLICY_VERSION = "2026-05-08"
@@ -23,7 +26,7 @@ DEFAULT_CAMPAIGN_INVITE_MAX_USES_LIMIT = 1000
 DEFAULT_MESSAGE_PROCESSING_STALE_MINUTES = 30
 DEFAULT_MESSAGE_EXPIRATION_HOURS = 24
 DEFAULT_MESSAGE_MAX_RETRIES = 1
-DEFAULT_AI_TIMEOUT_SECONDS = 60
+DEFAULT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_AI_MAX_RESPONSE_CHARS = 4000
 DEFAULT_MAX_MESSAGE_CHARS = 4000
 DEFAULT_USER_MESSAGES_PER_MINUTE = 6
@@ -37,7 +40,9 @@ DEFAULT_MEMORY_COMPACTION_TRIGGER_MESSAGES = 6
 DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES = 5
 DEFAULT_MEMORY_MAX_MESSAGE_CHARS = 4000
 DEFAULT_MEMORY_COMPACTED_MAX_CHARS = 2000
+DEFAULT_DEBUG_CONVERSATION_LOG_DIR = "debug_conversations"
 DEFAULT_BOTFORGE_ENV = "development"
+DEFAULT_BOT_TIMEZONE = "Europe/Madrid"
 PRODUCTION_ENVS = frozenset({"prod", "production"})
 DEVELOPMENT_DB_PASSWORD = "botforge_dev_password"
 PLACEHOLDER_TELEGRAM_TOKEN = "<telegram_bot_token>"
@@ -147,6 +152,8 @@ class Settings(DatabaseSettings):
     nvidia_api_key: str = ""
     nvidia_base_url: str = DEFAULT_NVIDIA_BASE_URL
     nvidia_model: str = DEFAULT_NVIDIA_MODEL
+    nutrition_normalizer_provider: str = DEFAULT_NUTRITION_NORMALIZER_PROVIDER
+    nutrition_normalizer_model: str = DEFAULT_NUTRITION_NORMALIZER_MODEL
     bot_profile: str = DEFAULT_BOT_PROFILE
     bot_profiles_dir: str = DEFAULT_BOT_PROFILES_DIR
     bot_policy_version: str = DEFAULT_BOT_POLICY_VERSION
@@ -172,9 +179,12 @@ class Settings(DatabaseSettings):
     memory_compaction_source_messages: int = DEFAULT_MEMORY_COMPACTION_SOURCE_MESSAGES
     memory_max_message_chars: int = DEFAULT_MEMORY_MAX_MESSAGE_CHARS
     memory_compacted_max_chars: int = DEFAULT_MEMORY_COMPACTED_MAX_CHARS
+    debug_conversation_log_enabled: bool = False
+    debug_conversation_log_dir: str = DEFAULT_DEBUG_CONVERSATION_LOG_DIR
     analytics_consent_enabled: bool = False
     training_consent_enabled: bool = False
     botforge_env: str = DEFAULT_BOTFORGE_ENV
+    bot_timezone: str = DEFAULT_BOT_TIMEZONE
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = environ) -> "Settings":
@@ -197,6 +207,16 @@ class Settings(DatabaseSettings):
             botforge_env,
             telegram_token=required["TELEGRAM_TOKEN"],
             db_password=required["DB_PASSWORD"],
+        )
+        debug_conversation_log_enabled = _parse_bool(
+            env.get("DEBUG_CONVERSATION_LOG_ENABLED")
+        )
+        _validate_debug_logging(
+            botforge_env,
+            enabled=debug_conversation_log_enabled,
+            allow_production=_parse_bool(
+                env.get("DEBUG_CONVERSATION_LOG_ALLOW_PRODUCTION")
+            ),
         )
 
         return cls(
@@ -224,6 +244,14 @@ class Settings(DatabaseSettings):
                 _clean(env.get("NVIDIA_BASE_URL")) or DEFAULT_NVIDIA_BASE_URL
             ),
             nvidia_model=_clean(env.get("NVIDIA_MODEL")) or DEFAULT_NVIDIA_MODEL,
+            nutrition_normalizer_provider=(
+                _clean(env.get("NUTRITION_NORMALIZER_PROVIDER"))
+                or DEFAULT_NUTRITION_NORMALIZER_PROVIDER
+            ).lower(),
+            nutrition_normalizer_model=(
+                _clean(env.get("NUTRITION_NORMALIZER_MODEL"))
+                or DEFAULT_NUTRITION_NORMALIZER_MODEL
+            ),
             bot_profile=_clean(env.get("BOT_PROFILE")) or DEFAULT_BOT_PROFILE,
             bot_profiles_dir=(
                 _clean(env.get("BOT_PROFILES_DIR")) or DEFAULT_BOT_PROFILES_DIR
@@ -316,6 +344,11 @@ class Settings(DatabaseSettings):
                 env.get("MEMORY_COMPACTED_MAX_CHARS"),
                 DEFAULT_MEMORY_COMPACTED_MAX_CHARS,
             ),
+            debug_conversation_log_enabled=debug_conversation_log_enabled,
+            debug_conversation_log_dir=(
+                _clean(env.get("DEBUG_CONVERSATION_LOG_DIR"))
+                or DEFAULT_DEBUG_CONVERSATION_LOG_DIR
+            ),
             analytics_consent_enabled=_parse_bool(
                 env.get("BOT_ANALYTICS_CONSENT_ENABLED")
             ),
@@ -323,6 +356,7 @@ class Settings(DatabaseSettings):
                 env.get("BOT_TRAINING_CONSENT_ENABLED")
             ),
             botforge_env=botforge_env,
+            bot_timezone=_parse_timezone(env.get("BOT_TIMEZONE")),
         )
 
 
@@ -421,6 +455,18 @@ def _parse_bool_default(value: str | None, *, default: bool) -> bool:
     return cleaned.lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_timezone(value: str | None) -> str:
+    """Parse and validate the default application timezone."""
+    cleaned = _clean(value) or DEFAULT_BOT_TIMEZONE
+    try:
+        ZoneInfo(cleaned)
+    except ZoneInfoNotFoundError as exc:
+        raise SettingsError(
+            f"BOT_TIMEZONE is not a valid IANA timezone: {cleaned}"
+        ) from exc
+    return cleaned
+
+
 def _validate_production_secrets(
     botforge_env: str,
     *,
@@ -442,6 +488,21 @@ def _validate_production_secrets(
         raise SettingsError(
             f"Production configuration cannot use development secrets: {details}."
         )
+
+
+def _validate_debug_logging(
+    botforge_env: str,
+    *,
+    enabled: bool,
+    allow_production: bool,
+) -> None:
+    """Keep raw conversation file logging out of production by default."""
+    if not enabled or botforge_env not in PRODUCTION_ENVS or allow_production:
+        return
+    raise SettingsError(
+        "DEBUG_CONVERSATION_LOG_ENABLED cannot be true in production unless "
+        "DEBUG_CONVERSATION_LOG_ALLOW_PRODUCTION=true is set explicitly."
+    )
 
 
 @lru_cache
