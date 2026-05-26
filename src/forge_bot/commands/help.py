@@ -4,7 +4,10 @@ from telegram.ext import ContextTypes
 from forge_bot.database import is_admin
 from forge_bot.messages import build_message
 
+from .auth_guard import require_login
 
+
+@require_login
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return

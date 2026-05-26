@@ -64,6 +64,21 @@ def make_callback_update(
     )
 
 
+@pytest.fixture(autouse=True)
+def allow_linked_command_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: True)
+
+
+@pytest.mark.asyncio
+async def test_policy_requires_linked_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    update = make_update()
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: False)
+
+    await policy(update, SimpleNamespace())
+
+    assert update.message.replies == [auth_guard.INVITE_REQUIRED_MESSAGE]
+
+
 @pytest.mark.asyncio
 async def test_policy_returns_current_notice(monkeypatch: pytest.MonkeyPatch) -> None:
     update = make_update()

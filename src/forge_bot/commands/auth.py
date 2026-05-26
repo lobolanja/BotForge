@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from forge_bot.database import redeem_invite_token, status_user
 from forge_bot.messages import build_message
 
+from .auth_guard import require_linked_user
 from .policy import policy_action_keyboard, policy_prompt
 
 INVITE_PROMPT = build_message(
@@ -72,6 +73,7 @@ async def _reply_to_invite_redemption(
     await update.message.reply_text(message)
 
 
+@require_linked_user
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user:
         return

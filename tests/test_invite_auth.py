@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from forge_bot.commands import auth_guard
 from forge_bot.commands.auth import start, status
 from forge_bot.database import InviteRedemption
 
@@ -168,6 +169,7 @@ async def test_start_reports_already_linked_user(
 @pytest.mark.asyncio
 async def test_status_shows_identity_copy(monkeypatch: pytest.MonkeyPatch) -> None:
     update = create_update()
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: True)
     monkeypatch.setattr(
         "forge_bot.commands.auth.status_user",
         lambda telegram_id: {
@@ -191,6 +193,7 @@ async def test_status_handles_campaign_identity_without_email(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update()
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: True)
     monkeypatch.setattr(
         "forge_bot.commands.auth.status_user",
         lambda telegram_id: {
@@ -206,15 +209,12 @@ async def test_status_handles_campaign_identity_without_email(
 
 
 @pytest.mark.asyncio
-async def test_status_reports_unlinked_identity(
+async def test_status_denies_unlinked_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     update = create_update()
-    monkeypatch.setattr("forge_bot.commands.auth.status_user", lambda telegram_id: None)
+    monkeypatch.setattr(auth_guard, "verify_user", lambda telegram_id: False)
 
     await status(update, create_context())
 
-    assert update.message.replies == [
-        "Identity not linked.\n\n"
-        "Next step: Open your invite link to connect your account"
-    ]
+    assert update.message.replies == [auth_guard.INVITE_REQUIRED_MESSAGE]

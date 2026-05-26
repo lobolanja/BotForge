@@ -10,6 +10,8 @@ from forge_bot.database import (
 )
 from forge_bot.messages import usage_message
 
+from .auth_guard import require_linked_user
+
 PRIVACY_TEXT = (
     "BotForge data controls\n\n"
     "BotForge stores your Telegram identity after invite redemption, policy "
@@ -36,6 +38,7 @@ DELETE_EXPLANATION = (
 )
 
 
+@require_linked_user
 async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Explain stored data categories and available controls."""
     if not update.message:
@@ -44,6 +47,7 @@ async def privacy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(PRIVACY_TEXT)
 
 
+@require_linked_user
 async def memory_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Clear personalization memory for the linked Telegram user."""
     if not update.message or not update.effective_user:
@@ -61,6 +65,7 @@ async def memory_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+@require_linked_user
 async def delete_my_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Request or confirm broader beta deletion for the linked Telegram user."""
     if not update.message or not update.effective_user:
